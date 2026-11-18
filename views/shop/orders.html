@@ -6,6 +6,18 @@
     <div class="eyebrow">My orders</div>
     <h1 class="h1" style="margin-top:12px">주문 내역</h1>
   </div>
+  <% if (notifications && notifications.length) { %>
+    <section class="card notice-list" aria-label="알림" style="margin-top:24px;padding:24px 28px">
+      <div class="eyebrow" style="margin-bottom:10px">Notifications</div>
+      <% notifications.forEach(function (n) { %>
+        <a class="notice <%= n.read ? '' : 'is-unread' %>" href="<%= n.order_no ? '/orders/' + n.order_no : '#' %>">
+          <span class="notice-title"><%= n.title %></span>
+          <span class="muted" style="font-size:13px"><%= n.body %></span>
+          <span class="soft mono" style="font-size:11px"><%= n.order_no %> · <%= new Date(new Date(n.created_at).getTime() + 9 * 3600000).toISOString().replace('T', ' ').slice(0, 16) %></span>
+        </a>
+      <% }) %>
+    </section>
+  <% } %>
   <% if (!orders.length) { %>
     <div class="empty" style="margin-top:32px">
       <h2 class="h3">아직 주문한 상품이 없습니다</h2>

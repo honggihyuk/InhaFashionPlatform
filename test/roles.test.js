@@ -1,11 +1,11 @@
 // 역할(role)에 따른 화면 분리: 관리자 ↔ 이용자 ↔ 비로그인
 const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, startServer, Client, ACCOUNTS } = require('./helpers/setup');
+const { setup, cleanup, startServer, Client, ACCOUNTS, db, S } = require('./helpers/setup');
 
-setup();
 let server; let anon; let user; let admin;
 before(async () => {
+  await setup();
   server = await startServer();
   anon = new Client(server.base);
   user = new Client(server.base);
@@ -13,9 +13,9 @@ before(async () => {
   await user.login(ACCOUNTS.user);
   await admin.login(ACCOUNTS.admin, 'admin');
 });
-after(async () => { await server.close(); });
+after(async () => { await server.close(); await cleanup(); });
 
-const ADMIN_PAGES = ['/admin', '/admin/products', '/admin/orders', '/admin/audit', '/admin/api/analysis/status'];
+const ADMIN_PAGES = ['/admin', '/admin/products', '/admin/orders', '/admin/audit', '/admin/jobs', '/admin/api/analysis/status'];
 const USER_PAGES = ['/cart', '/checkout', '/orders'];
 const SHOP_PAGES = ['/', '/products', '/products/0108775015'];
 
@@ -56,12 +56,15 @@ describe('이용자 (role=user)', () => {
   test('관리자 POST API 도 403 (상품 가격 변경 시도)', async () => {
     const res = await user.post('/admin/products/0108775015', { price_krw: 1, stock: 999, is_active: '1' });
     assert.equal(res.status, 403);
-    const { db } = require('./helpers/setup');
-    assert.equal(db.prepare("SELECT price_krw FROM products WHERE article_id = '0108775015'").get().price_krw, 12900, '가격이 바뀌면 안 됨');
+    assert.equal((await db.one(`SELECT price_krw FROM ${S.catalog}.products WHERE article_id = '0108775015'`)).price_krw, 12900, '가격이 바뀌면 안 됨');
   });
   test('관리자 POST API 도 403 (분석 실행 시도)', async () => {
     const res = await user.post('/admin/analysis/run', {});
     assert.equal(res.status, 403);
+  });
+  test('관리자 POST API 도 403 (실패 작업 재처리·재색인 시도)', async () => {
+    assert.equal((await user.post('/admin/jobs/replay-all', {})).status, 403);
+    assert.equal((await user.post('/admin/jobs/reindex', {})).status, 403);
   });
   for (const p of [...USER_PAGES.filter((x) => x !== '/checkout'), ...SHOP_PAGES]) {
     test(`${p} 접근 가능`, async () => {

@@ -16,7 +16,7 @@
         <input id="nav-q" name="q" placeholder="상품명, 품목, 상품번호 검색" value="<%= locals.filters ? filters.q : '' %>">
       </form>
       <% if (auth && auth.role === 'user') { %>
-        <a href="/orders">주문내역</a>
+        <a href="/orders">주문내역<% if (locals.unread) { %><span class="cart-badge" title="새 알림"><%= unread %></span><% } %></a>
         <a href="/cart">장바구니<span class="cart-badge"><%= cartCount %></span></a>
         <form action="/logout" method="post">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">

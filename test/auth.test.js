@@ -1,12 +1,11 @@
 // 로그인(이용자/관리자 계정 체계 분리), 회원가입, 로그아웃, CSRF
 const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, startServer, Client, ACCOUNTS } = require('./helpers/setup');
+const { setup, cleanup, startServer, Client, ACCOUNTS, db, S } = require('./helpers/setup');
 
-setup();
 let server;
-before(async () => { server = await startServer(); });
-after(async () => { await server.close(); });
+before(async () => { await setup(); server = await startServer(); });
+after(async () => { await server.close(); await cleanup(); });
 const client = () => new Client(server.base);
 
 describe('로그인 화면', () => {
@@ -76,9 +75,8 @@ describe('관리자/이용자 계정 체계 분리 (admin 스키마 vs member �
   });
 
   test('관리자 로그인 시 last_login_at 이 기록된다', async () => {
-    const { db } = require('./helpers/setup');
     await client().login(ACCOUNTS.admin, 'admin');
-    const row = db.prepare('SELECT last_login_at FROM admin.admin_users WHERE email = ?').get(ACCOUNTS.admin.email);
+    const row = await db.one(`SELECT last_login_at FROM ${S.admin}.admin_users WHERE email = ?`, [ACCOUNTS.admin.email]);
     assert.ok(row.last_login_at);
   });
 
@@ -145,16 +143,15 @@ describe('회원가입', () => {
   }
 
   test('정상 가입 → member 스키마에 저장되고 바로 로그인된다', async () => {
-    const { db } = require('./helpers/setup');
     const c = client();
     const res = await c.post('/signup', valid);
     assert.equal(res.status, 302);
     assert.equal(res.location, '/');
-    const row = db.prepare('SELECT * FROM member.users WHERE email = ?').get(valid.email);
+    const row = await db.one(`SELECT * FROM ${S.member}.users WHERE email = ?`, [valid.email]);
     assert.ok(row, 'member.users 에 저장');
     assert.notEqual(row.password_hash, valid.password, '비밀번호는 해시로 저장');
     assert.match(row.password_hash, /^scrypt\$/);
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM admin.admin_users WHERE email = ?').get(valid.email).n, 0, 'admin 스키마에는 생기지 않음');
+    assert.equal((await db.one(`SELECT COUNT(*) AS n FROM ${S.admin}.admin_users WHERE email = ?`, [valid.email])).n, 0, 'admin 스키마에는 생기지 않음');
     await c.get('/');
     assert.equal((await c.get('/cart')).status, 200);
   });

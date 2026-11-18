@@ -100,3 +100,12 @@
 .spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 24px; }
 .spark i { display: block; width: 5px; background: var(--color-ledger-brown); border-radius: 1px; opacity: .75; }
 .spark i:last-child { background: var(--color-terracotta-disc); opacity: 1; }
+
+/* 상품 검색 (Elasticsearch) */
+.search-panel { display: grid; gap: 12px; margin-bottom: 20px; padding: 20px; border-radius: var(--radius-cards); background: var(--color-oat-surface); }
+.search-main { display: flex; gap: 8px; }
+.search-main .input { flex: 1; border-radius: var(--radius-pills); padding: 12px 18px; }
+.input-price { width: 110px !important; }
+.engine-badge { display: grid; gap: 4px; justify-items: end; font-size: 13px; }
+.engine-badge.is-fallback .soft { max-width: 280px; text-align: right; }
+.hl mark { background: rgba(224, 113, 34, .2); color: inherit; border-radius: 3px; padding: 0 1px; }

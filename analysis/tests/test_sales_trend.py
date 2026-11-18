@@ -3,7 +3,9 @@ analysis/sales_trend.py 테스트 (Python 표준 unittest)
 
     python -m unittest discover -s analysis/tests -t .      # 또는  npm run test:py
 
-임시 폴더에 작은 catalog.db / member.db 를 만들어 값을 손으로 계산할 수 있는 데이터로 검증합니다.
+임시 폴더에 작은 SQLite catalog.db / member.db 를 만들어 값을 손으로 계산할 수 있는 데이터로 검증합니다.
+(운영 DDL 은 MySQL 이므로, 같은 테이블 구조의 SQLite DDL 을 tests/fixtures 에 둡니다.)
+MySQL 이 떠 있으면(docker compose up -d) --mysql 모드도 임시 스키마로 끝까지 검증합니다.
 torch 가 설치되어 있지 않으면 전체를 건너뜁니다 (pip install -r analysis/requirements.txt).
 """
 import json
@@ -33,8 +35,14 @@ UTF8_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}  # Windows(cp949) 콘솔�
 
 
 def read_schema(name):
-    with open(os.path.join(ROOT, "db", "schema", name), encoding="utf-8") as f:
+    """SQLite 테스트용 DDL (catalog.sql → fixtures/catalog_sqlite.sql)"""
+    with open(os.path.join(HERE, "fixtures", name.replace(".sql", "_sqlite.sql")), encoding="utf-8") as f:
         return f.read()
+
+
+def wrap(con):
+    """sales_trend 가 쓰는 DB 래퍼 (날짜·DECIMAL 정규화, 오류는 DbError)"""
+    return st.Conn(con, "sqlite")
 
 
 def make_catalog(path, start=date(2020, 1, 1), days=120):
@@ -86,7 +94,7 @@ class SalesTrendTestBase(unittest.TestCase):
         self.rows = make_catalog(self.catalog, **kw)
         con = sqlite3.connect(self.catalog)
         try:
-            return st.load_transactions(con)
+            return st.load_transactions(wrap(con))
         finally:
             con.close()
 
@@ -105,7 +113,7 @@ class TestLoadAndAggregate(SalesTrendTestBase):
         con = sqlite3.connect(self.catalog)
         con.executescript(read_schema("catalog.sql"))
         with self.assertRaises(SystemExit) as cm:
-            st.load_transactions(con)
+            st.load_transactions(wrap(con))
         con.close()
         self.assertIn("transactions", str(cm.exception))
 
@@ -124,7 +132,7 @@ class TestLoadAndAggregate(SalesTrendTestBase):
         con.executescript(read_schema("catalog.sql"))
         con.executemany("INSERT INTO transactions VALUES (?, 'c', 'a', ?, 1)", [("2020-01-01", 0.01), ("2020-01-04", 0.02)])
         con.commit()
-        tx = st.load_transactions(con)
+        tx = st.load_transactions(wrap(con))
         con.close()
         revenue, _, _ = st.daily_aggregate(tx)
         self.assertEqual([round(v) for v in revenue.tolist()], [10_000, 0, 0, 20_000])
@@ -227,15 +235,15 @@ class TestHourly(SalesTrendTestBase):
     """0~23시 시간대 분석: H&M 데이터에는 시각이 없으므로 플랫폼 주문(member.orders.created_at)으로 계산"""
 
     def test_missing_member_db_returns_none(self):
-        self.assertIsNone(st.hourly(os.path.join(self.tmp, "nope.db")))
+        self.assertIsNone(st.hourly(st.connect_sqlite(os.path.join(self.tmp, "nope.db"))))
 
     def test_member_db_without_orders_table_returns_none(self):
         sqlite3.connect(self.member).close()
-        self.assertIsNone(st.hourly(self.member))
+        self.assertIsNone(st.hourly(st.connect_sqlite(self.member)))
 
     def test_no_orders(self):
         make_member(self.member, [])
-        self.assertEqual(st.hourly(self.member), {"orders": 0})
+        self.assertEqual(st.hourly(st.connect_sqlite(self.member)), {"orders": 0})
 
     def test_peak_hour_slots_and_heatmap(self):
         orders = [
@@ -247,7 +255,7 @@ class TestHourly(SalesTrendTestBase):
             ("2020-09-16 12:00:00", 99999, "CANCELLED", "web"),   # 취소 → 제외
         ]
         make_member(self.member, orders)
-        h = st.hourly(self.member)
+        h = st.hourly(st.connect_sqlite(self.member))
         self.assertEqual(h["orders"], 5)
         self.assertEqual(h["seed_orders"], 2)
         self.assertEqual(h["days"], 3)
@@ -277,7 +285,7 @@ class TestHourly(SalesTrendTestBase):
         orders = [((base + timedelta(days=d, hours=10)).strftime("%Y-%m-%d %H:%M:%S"), 1000, "PAID", "web") for d in range(5)]
         orders += [((base + timedelta(days=d, hours=20)).strftime("%Y-%m-%d %H:%M:%S"), 1000, "PAID", "web") for d in range(20, 24)]
         make_member(self.member, orders)
-        h = st.hourly(self.member)
+        h = st.hourly(st.connect_sqlite(self.member))
         self.assertEqual(h["share_before"][10], 100.0)
         self.assertEqual(h["share_recent_7d"][20], 100.0)
         self.assertAlmostEqual(sum(h["share_recent_7d"]), 100.0, places=0)
@@ -313,14 +321,14 @@ class TestPromotionCandidates(SalesTrendTestBase):
         rows += [((end - timedelta(days=i)).isoformat(), "z", "0999999999", 0.01, 1) for i in range(0, 63)]
         con.executemany("INSERT INTO transactions VALUES (?, ?, ?, ?, ?)", rows)
         con.commit()
-        tx = st.load_transactions(con)
+        tx = st.load_transactions(wrap(con))
         con.close()
         return tx
 
     def products(self):
         con = sqlite3.connect(self.catalog)
         try:
-            return st.load_products(con)
+            return st.load_products(wrap(con))
         finally:
             con.close()
 
@@ -331,7 +339,7 @@ class TestPromotionCandidates(SalesTrendTestBase):
 
     def test_load_products_without_products_table(self):
         con = sqlite3.connect(self.catalog)
-        self.assertEqual(st.load_products(con), {})
+        self.assertEqual(st.load_products(wrap(con)), {})
         con.close()
 
     def test_declining_overstock_ranked_first(self):
@@ -434,6 +442,76 @@ class TestCommandLine(unittest.TestCase):
                                capture_output=True, text=True, encoding="utf-8", errors="replace", env=UTF8_ENV, timeout=120)
             self.assertNotEqual(p.returncode, 0)
             self.assertFalse(os.path.exists(out))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def mysql_or_none():
+    try:
+        import pymysql
+        return pymysql.connect(host=os.environ.get("MYSQL_HOST", "127.0.0.1"), port=int(os.environ.get("MYSQL_PORT", "3306")),
+                               user=os.environ.get("MYSQL_USER", "inha"), password=os.environ.get("MYSQL_PASSWORD", "inha-pass"),
+                               charset="utf8mb4", connect_timeout=2, autocommit=True)
+    except Exception:
+        return None
+
+
+@unittest.skipIf(st is None, globals().get("SKIP_REASON", ""))
+class TestMySqlMode(unittest.TestCase):
+    """운영과 같은 --mysql 모드: 임시 스키마(t_py_*)에 db/schema/*.sql(MySQL DDL)을 만들고 끝까지 실행"""
+
+    def setUp(self):
+        self.con = mysql_or_none()
+        if self.con is None:
+            self.skipTest("MySQL 에 연결할 수 없습니다 (docker compose up -d 후 다시 실행)")
+        tag = f"{os.getpid()}"
+        self.schemas = {"catalog": f"t_py{tag}_catalog", "admin": f"t_py{tag}_admin", "member": f"t_py{tag}_member"}
+        for name in ("catalog", "member"):
+            with open(os.path.join(ROOT, "db", "schema", f"{name}.sql"), encoding="utf-8") as f:
+                ddl = f.read()
+            for k, v in self.schemas.items():
+                ddl = ddl.replace("{{" + k + "}}", v)
+            with self.con.cursor() as cur:
+                for stmt in [x.strip() for x in ddl.split(";")]:
+                    if stmt and not all(line.strip().startswith("--") or not line.strip() for line in stmt.splitlines()):
+                        cur.execute(stmt)
+
+    def tearDown(self):
+        if self.con is not None:
+            with self.con.cursor() as cur:
+                for v in self.schemas.values():
+                    cur.execute(f"DROP DATABASE IF EXISTS `{v}`")
+            self.con.close()
+
+    def test_end_to_end_mysql(self):
+        c, m = self.schemas["catalog"], self.schemas["member"]
+        with self.con.cursor() as cur:
+            cur.executemany(f"INSERT INTO `{c}`.articles (article_id, product_code, prod_name, product_group_name, index_group_name) VALUES (%s,%s,%s,%s,%s)",
+                            [("0100000001", "0100000", "Top", "Garment Upper body", "Ladieswear"),
+                             ("0200000001", "0200000", "Shoe", "Shoes", "Menswear")])
+            rows = []
+            for i in range(90):
+                d = (date(2020, 1, 1) + timedelta(days=i)).isoformat()
+                rows += [(d, f"c{i}", "0100000001", 0.01, 2), (d, f"d{i}", "0200000001", 0.05, 1)]
+            cur.executemany(f"INSERT INTO `{c}`.transactions (t_dat, customer_id, article_id, price, sales_channel_id) VALUES (%s,%s,%s,%s,%s)", rows)
+            cur.execute(f"INSERT INTO `{c}`.products (article_id, price_krw, stock, is_active) VALUES ('0200000001', 59000, 500, 1)")
+            cur.execute(f"INSERT INTO `{m}`.users (email, password_hash, name) VALUES ('u@test', 'x', 'u')")
+            cur.execute(f"""INSERT INTO `{m}`.orders (order_no, user_id, status, total_krw, recipient, phone, address, payment_method, source, created_at)
+                            VALUES ('T1', LAST_INSERT_ID(), 'PAID', 10000, 'r', 'p', 'a', 'card', 'web', '2020-02-28 21:15:00')""")
+        tmp = tempfile.mkdtemp(prefix="inha-analysis-mysql-")
+        try:
+            out = os.path.join(tmp, "out.json")
+            p = subprocess.run([sys.executable, SCRIPT, "--mysql", "--catalog-schema", c, "--member-schema", m, "--out", out, "--epochs", "30"],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", env=UTF8_ENV, timeout=300)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            with open(out, encoding="utf-8") as f:
+                r = json.load(f)
+            self.assertEqual(r["summary"]["transactions"], 180)
+            self.assertEqual(r["summary"]["period"], {"from": "2020-01-01", "to": "2020-03-30", "days": 90})
+            self.assertEqual(r["hourly"]["orders"], 1)
+            self.assertEqual(r["hourly"]["peak_hour"], 21)
+            self.assertEqual(r["hourly"]["from"], "2020-02-28 21:15:00")
+            self.assertEqual([x["article_id"] for x in r["promotions"]], ["0200000001"])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

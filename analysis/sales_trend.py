@@ -14,8 +14,12 @@ PyTorch 기반 H&M 판매 추이 분석.
       계산합니다. 집계는 모두 torch 텐서 연산(index_add_, bincount)으로 수행하고,
       다음 4주 매출은 torch.nn 회귀 모델로 학습·예측합니다.
 
-    python analysis/sales_trend.py [--catalog data/db/catalog.db] [--member data/db/member.db]
-                                   [--out data/analysis/sales_trends.json] [--epochs 1500]
+    # 운영: MySQL (접속 정보는 MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD 환경 변수)
+    python analysis/sales_trend.py --mysql --catalog-schema inha_catalog --member-schema inha_member --out result.json
+    # 테스트·오프라인: SQLite 파일
+    python analysis/sales_trend.py --catalog catalog.db --member member.db --out result.json
+
+결과 JSON 은 후처리 워커(analysis-runner)가 MongoDB analysis_results 컬렉션에 저장합니다.
 """
 import argparse
 import json
@@ -25,6 +29,7 @@ import sqlite3
 import sys
 import time
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 import numpy as np
 import torch
@@ -40,6 +45,71 @@ np.random.seed(7)
 
 def log(msg):
     print(f"[{datetime.now():%H:%M:%S}] {msg}", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# 0. DB 연결: MySQL(운영) / SQLite(테스트) 를 같은 인터페이스로
+# ---------------------------------------------------------------------------
+class DbError(Exception):
+    pass
+
+
+def _norm(v):
+    if isinstance(v, datetime):
+        return v.isoformat(sep=" ")
+    if isinstance(v, date):
+        return v.isoformat()
+    if isinstance(v, Decimal):
+        return float(v)
+    return v
+
+
+class _Cursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchall(self):
+        return self.rows
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
+class Conn:
+    """execute(sql).fetchall() 만 쓰는 얇은 래퍼. 날짜는 ISO 문자열, DECIMAL 은 float 로 통일."""
+
+    def __init__(self, raw, kind):
+        self.raw, self.kind = raw, kind
+
+    def execute(self, sql):
+        try:
+            if self.kind == "sqlite":
+                rows = self.raw.execute(sql).fetchall()
+            else:
+                with self.raw.cursor() as cur:
+                    cur.execute(sql)
+                    rows = cur.fetchall()
+        except Exception as e:  # 테이블 없음 등
+            raise DbError(str(e)) from e
+        return _Cursor([tuple(_norm(v) for v in r) for r in rows])
+
+    def close(self):
+        self.raw.close()
+
+
+def connect_sqlite(path):
+    if not path or not os.path.exists(path):
+        return None
+    return Conn(sqlite3.connect(path), "sqlite")
+
+
+def connect_mysql(schema):
+    import pymysql  # MySQL 모드에서만 필요
+    raw = pymysql.connect(
+        host=os.environ.get("MYSQL_HOST", "127.0.0.1"), port=int(os.environ.get("MYSQL_PORT", "3306")),
+        user=os.environ.get("MYSQL_USER", "inha"), password=os.environ.get("MYSQL_PASSWORD", "inha-pass"),
+        database=schema, charset="utf8mb4", init_command="SET time_zone = '+09:00'")
+    return Conn(raw, "mysql")
 
 
 # ---------------------------------------------------------------------------
@@ -266,19 +336,16 @@ def forecast(tx, revenue, epochs, horizon=28, holdout=28):
 # ---------------------------------------------------------------------------
 # 4. 시간대(0~23시) 분석: 플랫폼 자체 주문
 # ---------------------------------------------------------------------------
-def hourly(member_db):
-    if not os.path.exists(member_db):
+def hourly(con):
+    if con is None:
         return None
-    con = sqlite3.connect(member_db)
     try:
         rows = con.execute("""SELECT created_at, total_krw, source FROM orders WHERE status <> 'CANCELLED'""").fetchall()
-    except sqlite3.OperationalError:
+    except DbError:
         return None
-    finally:
-        con.close()
     if not rows:
         return {"orders": 0}
-    ts = [datetime.fromisoformat(r[0]) for r in rows]
+    ts = [datetime.fromisoformat(str(r[0])) for r in rows]
     hour = torch.tensor([t.hour for t in ts])
     wday = torch.tensor([t.weekday() for t in ts])
     amount = torch.tensor([float(r[1]) for r in rows], dtype=torch.float64)
@@ -324,7 +391,7 @@ def load_products(con):
             SELECT p.article_id, p.stock, p.price_krw, a.prod_name, COALESCE(a.product_group_name, 'Unknown')
             FROM products p JOIN articles a ON a.article_id = p.article_id
             WHERE p.is_active = 1 AND p.stock > 0""").fetchall()
-    except sqlite3.OperationalError:  # products 테이블 없음
+    except DbError:  # products 테이블 없음
         return {}
     return {r[0]: (r[1], r[2], r[3], r[4]) for r in rows}
 
@@ -405,16 +472,26 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--catalog", default=os.path.join(ROOT, "data", "db", "catalog.db"))
     ap.add_argument("--member", default=os.path.join(ROOT, "data", "db", "member.db"))
+    ap.add_argument("--mysql", action="store_true", help="MySQL 에서 읽기 (MYSQL_* 환경 변수)")
+    ap.add_argument("--catalog-schema", default=os.environ.get("INHA_NS", "inha_") + "catalog")
+    ap.add_argument("--member-schema", default=os.environ.get("INHA_NS", "inha_") + "member")
     ap.add_argument("--out", default=os.path.join(ROOT, "data", "analysis", "sales_trends.json"))
     ap.add_argument("--epochs", type=int, default=1500)
     args = ap.parse_args()
     t0 = time.time()
     log(f"torch {torch.__version__} | device=cpu")
 
-    con = sqlite3.connect(args.catalog)
-    tx = load_transactions(con)
-    products = load_products(con)
-    con.close()
+    if args.mysql:
+        con, mcon = connect_mysql(args.catalog_schema), connect_mysql(args.member_schema)
+    else:
+        con, mcon = connect_sqlite(args.catalog), connect_sqlite(args.member)
+        if con is None:
+            raise SystemExit(f"catalog DB 가 없습니다: {args.catalog}")
+    try:
+        tx = load_transactions(con)
+        products = load_products(con)
+    finally:
+        con.close()
     log(f"거래 {len(tx['price']):,}건 로드 ({tx['start']} ~ {tx['end']})")
 
     revenue, units, online = daily_aggregate(tx)
@@ -423,7 +500,11 @@ def main():
     log("추이 집계 완료")
     result["forecast"] = forecast(tx, revenue, args.epochs)
     log(f"예측 모델 학습 완료 (holdout MAPE {result['forecast']['holdout']['mape_pct']}%)")
-    result["hourly"] = hourly(args.member)
+    try:
+        result["hourly"] = hourly(mcon)
+    finally:
+        if mcon is not None:
+            mcon.close()
     log("시간대 분석 완료")
     result["promotions"] = promotion_candidates(tx, products)
     log(f"행사 상품 후보 {len(result['promotions'])}개 추천")

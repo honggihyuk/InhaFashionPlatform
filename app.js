@@ -4,9 +4,10 @@ const express = require('express');
 const session = require('express-session');
 const ejs = require('ejs');
 const config = require('./config');
-const { catalogReady } = require('./db/connection');
-const analysis = require('./models/analysis');
+const db = require('./db/mysql');
+const mongo = require('./db/mongo');
 const cart = require('./models/cart');
+const notification = require('./models/notification');
 const { csrf } = require('./middleware/auth');
 const { ko } = require('./services/labels');
 
@@ -27,12 +28,15 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', maxAge: 1000 * 60 * 60 * 8 },
 }));
 // 모든 템플릿에서 쓰는 공통 값
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   res.locals.auth = req.session.auth || null;
   res.locals.path = req.path;
   res.locals.flash = req.session.flash || null;
   delete req.session.flash;
-  res.locals.cartCount = req.session.auth && req.session.auth.role === 'user' ? cart.count(req.session.auth.id) : 0;
+  const isUser = req.session.auth && req.session.auth.role === 'user';
+  res.locals.cartCount = isUser ? await cart.count(req.session.auth.id) : 0;
+  // 알림은 MongoDB(후처리로 생성) — 조회 실패 시 0
+  res.locals.unread = isUser ? await notification.unreadCount(req.session.auth.id) : 0;
   res.locals.ko = ko;
   res.locals.won = (n) => `₩${Math.round(Number(n) || 0).toLocaleString('ko-KR')}`;
   next();
@@ -40,8 +44,10 @@ app.use((req, res, next) => {
 // CSRF 검사는 공통 값(path, auth 등) 설정 뒤에 해야 403 오류 페이지가 정상 렌더링됨
 app.use(csrf);
 
-app.use((req, res, next) => {
-  if (catalogReady()) return next();
+// 상품 데이터가 적재됐는지 확인 (한 번 확인되면 캐시)
+let ready = false;
+app.use(async (req, res, next) => {
+  if (ready || (ready = await db.catalogReady())) return next();
   return res.status(503).render('error', { title: '데이터 준비 필요', message: 'H&M 데이터가 아직 적재되지 않았습니다. `npm run setup` 을 실행하세요.' });
 });
 
@@ -62,11 +68,17 @@ app.use((err, req, res, next) => {
   res.status(500).render('error', { title: '오류가 발생했습니다', message: '잠시 후 다시 시도해 주세요.' });
 });
 
-analysis.markStaleFailed();
-
 if (require.main === module) {
-  app.listen(config.port, () => {
-    console.log(`InhaFashionPlatform → http://localhost:${config.port}`);
+  (async () => {
+    await db.migrate(); // MySQL 스키마·테이블 생성 (멱등)
+    await mongo.ensureIndexes().catch((err) => console.warn('[app] MongoDB 인덱스 생성 실패:', err.message));
+    app.listen(config.port, () => {
+      console.log(`InhaFashionPlatform → http://localhost:${config.port}`);
+      console.log('후처리 워커는 별도 터미널에서 `npm run worker` 로 실행하세요.');
+    });
+  })().catch((err) => {
+    console.error('[app] 시작 실패 — MySQL 이 실행 중인지 확인하세요 (docker compose up -d):', err.message);
+    process.exit(1);
   });
 }
 

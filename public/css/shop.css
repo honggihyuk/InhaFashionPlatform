@@ -117,3 +117,10 @@
   .filters, .detail-info, .summary { position: static; }
   .pay-options { grid-template-columns: 1fr; }
 }
+
+/* 이용자 알림 (RabbitMQ 후처리로 생성) */
+.notice-list { display: grid; gap: 2px; }
+.notice { display: grid; gap: 2px; padding: 10px 0; border-bottom: 1px solid #ebe5de; }
+.notice:last-child { border-bottom: 0; }
+.notice-title { font-weight: 500; }
+.notice.is-unread .notice-title::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--color-copper-link); margin-right: 8px; vertical-align: middle; }

@@ -1,0 +1,117 @@
+<%- include('../partials/admin-start.html') %>
+<div class="admin-head">
+  <div>
+    <div class="eyebrow">Post-processing · RabbitMQ</div>
+    <h1 class="h1">후처리 작업</h1>
+    <p class="muted" style="margin-top:8px;font-size:14px;max-width:720px">주문·관리 작업은 MySQL 에 먼저 저장되고, 알림·검색 색인·감사 로그·분석 실행은 RabbitMQ 로 나뉘어 처리됩니다. 실패한 작업은 자동으로 5초 → 30초 → 2분 간격으로 다시 시도하고, 그래도 실패하면 아래 목록에 남습니다.</p>
+  </div>
+  <form method="post" action="/admin/jobs/reindex">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <button class="btn btn-secondary btn-sm" type="submit">검색 인덱스 전체 재생성</button>
+  </form>
+</div>
+
+<% var ob = overview.outbox; %>
+<section class="kpis" aria-label="후처리 현황">
+  <div class="kpi">
+    <span class="media-label">Outbox · 발행 대기</span>
+    <span class="value num"><%= ob.error ? '—' : (ob.member.pending + ob.admin.pending) %></span>
+    <span class="delta" style="color:rgba(255,255,255,.62)"><%= ob.error ? 'MySQL 연결 실패' : '이용자 ' + ob.member.pending + ' · 관리자 ' + ob.admin.pending + (ob.member.retrying + ob.admin.retrying ? ' · 재시도 중 ' + (ob.member.retrying + ob.admin.retrying) : '') %></span>
+  </div>
+  <div class="kpi">
+    <span class="media-label">Outbox · 발행 완료</span>
+    <span class="value num"><%= ob.error ? '—' : (ob.member.sent + ob.admin.sent).toLocaleString('ko-KR') %></span>
+    <span class="delta" style="color:rgba(255,255,255,.62)">최근 7일 보관</span>
+  </div>
+  <div class="kpi">
+    <span class="media-label">Failed · 재처리 필요</span>
+    <span class="value num"><%= overview.counts.error ? '—' : (overview.counts.FAILED || 0) %></span>
+    <span class="delta" style="color:rgba(255,255,255,.62)">재처리 보냄 <%= overview.counts.REQUEUED || 0 %>건 · 재처리 성공 <%= overview.counts.RESOLVED || 0 %>건</span>
+  </div>
+  <div class="kpi">
+    <span class="media-label">Elasticsearch</span>
+    <span class="value num"><%= es.ok ? es.docs.toLocaleString('ko-KR') : '—' %></span>
+    <span class="delta <%= es.ok ? 'up' : 'down' %>"><%= es.ok ? '클러스터 ' + es.status + ' · 색인 문서 수' : '연결 실패' %></span>
+  </div>
+</section>
+<% if (!ob.error && (ob.member.last_error || ob.admin.last_error)) { %>
+  <div class="flash flash-error" role="alert">RabbitMQ 발행이 실패해 outbox 에서 다시 시도하는 중입니다: <%= ob.member.last_error || ob.admin.last_error %></div>
+<% } %>
+
+<section class="chart-card" style="margin-top:20px">
+  <div class="chart-head"><div><div class="eyebrow">Queues</div><h2 class="h3">후처리 큐</h2>
+    <p>대기: 처리 전 메시지 · 재시도: 실패 후 다시 처리하기를 기다리는 메시지 · DLQ: 재시도를 모두 실패해 보관 중인 메시지</p></div></div>
+  <% if (overview.queues.error) { %>
+    <p class="status status-bad">RabbitMQ 에 연결할 수 없습니다: <%= overview.queues.error %>. 작업은 outbox 에 안전하게 쌓여 있다가 연결이 돌아오면 발행됩니다.</p>
+  <% } else { %>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>큐</th><th>하는 일</th><th>구독 이벤트</th><th class="right">대기</th><th class="right">재시도</th><th class="right">DLQ</th><th class="right">워커</th></tr></thead>
+      <tbody>
+        <% var desc = { 'search-indexer': 'Elasticsearch 상품 색인 갱신', 'user-notifier': '이용자 주문 알림 생성 (MongoDB)', 'audit-writer': '관리자 작업 기록 (MongoDB)', 'activity-logger': '조회·장바구니·구매 활동 로그 (MongoDB)', 'analysis-runner': 'PyTorch 판매 추이 분석 실행' }; %>
+        <% overview.queues.forEach(function (q) { %>
+          <tr>
+            <td class="mono" style="font-size:12px"><%= q.name %></td>
+            <td style="font-size:13px"><%= desc[q.name] %></td>
+            <td class="mono soft" style="font-size:11px"><%= q.bindings.join(', ') %></td>
+            <td class="right num"><%= q.ready %></td>
+            <td class="right num"><%= q.retry %></td>
+            <td class="right num"><%= q.dlq %></td>
+            <td class="right"><span class="status <%= q.consumers ? 'status-ok' : 'status-bad' %>"><%= q.consumers ? q.consumers + '개' : '중지' %></span></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% if (overview.queues.some(function (q) { return !q.consumers; })) { %>
+    <p class="note" style="margin-top:12px"><b>워커가 실행 중이 아닙니다.</b> 별도 터미널에서 <span class="mono">npm run worker</span> 를 실행하면 쌓인 메시지가 처리됩니다.</p>
+  <% } %>
+  <% } %>
+</section>
+
+<section class="chart-card" style="margin-top:20px">
+  <div class="chart-head">
+    <div><div class="eyebrow">Dead letters · MongoDB</div><h2 class="h3">실패한 작업</h2>
+      <p>재처리를 누르면 원래 이벤트를 같은 ID 로 다시 발행합니다. 이미 성공한 다른 작업은 중복 처리되지 않고 실패한 작업만 다시 실행됩니다.</p></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <a class="pill <%= status === 'FAILED' ? 'is-active' : '' %>" href="/admin/jobs">실패</a>
+      <a class="pill <%= status === 'REQUEUED' ? 'is-active' : '' %>" href="/admin/jobs?status=REQUEUED">재처리 보냄</a>
+      <a class="pill <%= status === 'RESOLVED' ? 'is-active' : '' %>" href="/admin/jobs?status=RESOLVED">재처리 성공</a>
+      <% if (status === 'FAILED' && failed.length) { %>
+        <form method="post" action="/admin/jobs/replay-all">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-primary btn-sm" type="submit">전체 재처리 (<%= failed.length %>)</button>
+        </form>
+      <% } %>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>큐</th><th>이벤트</th><th>오류</th><th class="right">시도</th><th>실패 시각</th><th></th></tr></thead>
+      <tbody>
+        <% var fmt = function (d) { var t = new Date(d); return new Date(t.getTime() + 9 * 3600000).toISOString().replace('T', ' ').slice(0, 19); }; %>
+        <% failed.forEach(function (f) { %>
+          <tr>
+            <td class="mono" style="font-size:12px"><%= f.queue %></td>
+            <td style="font-size:13px"><span class="mono"><%= f.routing_key %></span><br><span class="soft mono" style="font-size:11px"><%= f.event_id %></span></td>
+            <td class="mono" style="font-size:11px;max-width:360px;word-break:break-all;color:var(--color-expiry-red)"><%= f.error %></td>
+            <td class="right num"><%= f.attempts %><% if (f.replay_count) { %> <span class="soft">(재처리 <%= f.replay_count %>)</span><% } %></td>
+            <td class="num" style="font-size:12px;white-space:nowrap"><%= fmt(status === 'RESOLVED' && f.resolved_at ? f.resolved_at : status === 'REQUEUED' && f.replayed_at ? f.replayed_at : f.failed_at) %></td>
+            <td>
+              <% if (f.status === 'FAILED') { %>
+              <form method="post" action="/admin/jobs/replay">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="id" value="<%= f._id %>">
+                <button class="btn btn-secondary btn-sm" type="submit">재처리</button>
+              </form>
+              <% } else if (f.status === 'RESOLVED') { %><span class="status status-ok">재처리 성공</span>
+              <% } else { %><span class="status status-pending">재처리 보냄</span><% } %>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (!failed.length) { %><tr><td colspan="6" class="muted" style="text-align:center;padding:32px"><%= status === 'FAILED' ? '실패한 작업이 없습니다.' : status === 'RESOLVED' ? '재처리로 해결된 작업이 없습니다.' : '재처리 보낸 작업이 없습니다.' %></td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+<%- include('../partials/admin-end.html') %>

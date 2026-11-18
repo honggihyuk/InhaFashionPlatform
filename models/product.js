@@ -1,13 +1,16 @@
-// 상품 모델: H&M articles + 판매 정보(products)
+// 상품 모델: H&M articles + 판매 정보(products) — MySQL catalog 스키마
+// 이용자 쇼핑 화면은 MySQL 로 조회하고, 관리자 상품 검색은 Elasticsearch(search/products.js)를 씁니다.
 const fs = require('fs');
 const path = require('path');
-const { db } = require('../db/connection');
+const db = require('../db/mysql');
 const config = require('../config');
-const { FINAL_PRICE_SQL } = require('./promotion');
+const { FINAL_PRICE_SQL } = require('./pricing');
+
+const { S } = db;
 
 // price_krw: 정가, final_price_krw: 실제 판매가(행사 중이면 할인가), discount_pct: 행사 할인율(없으면 NULL)
-const FROM = `FROM products p JOIN articles a ON a.article_id = p.article_id
-  LEFT JOIN promotions pr ON pr.article_id = p.article_id`;
+const FROM = `FROM ${S.catalog}.products p JOIN ${S.catalog}.articles a ON a.article_id = p.article_id
+  LEFT JOIN ${S.catalog}.promotions pr ON pr.article_id = p.article_id`;
 const SELECT = `
   SELECT a.*, p.price_krw, p.stock, p.is_active, p.popularity, p.updated_at,
          pr.discount_pct, ${FINAL_PRICE_SQL} AS final_price_krw
@@ -64,65 +67,62 @@ function buildWhere({ q, index, group, colour, sale, includeInactive }) {
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
 }
 
-function list(filters = {}) {
+async function list(filters = {}) {
   const limit = Math.min(Number(filters.limit) || 24, 100);
   const page = Math.max(Number(filters.page) || 1, 1);
   const { sql, params } = buildWhere(filters);
   const order = SORTS[filters.sort] || SORTS.popular;
-  const total = db.prepare(`SELECT COUNT(*) AS n ${FROM} ${sql}`).get(params).n;
-  const items = db.prepare(`${SELECT} ${sql} ORDER BY ${order} LIMIT :limit OFFSET :offset`)
-    .all({ ...params, limit, offset: (page - 1) * limit }).map(decorate);
+  const total = (await db.one(`SELECT COUNT(*) AS n ${FROM} ${sql}`, params)).n;
+  const items = (await db.query(`${SELECT} ${sql} ORDER BY ${order} LIMIT ${limit} OFFSET ${(page - 1) * limit}`, params)).map(decorate);
   return { items, total, page, pages: Math.max(Math.ceil(total / limit), 1), limit };
 }
 
-function facets() {
-  const col = (c) => db.prepare(`SELECT a.${c} AS name, COUNT(*) AS n FROM products p JOIN articles a USING(article_id)
-    WHERE p.is_active = 1 GROUP BY a.${c} ORDER BY n DESC`).all();
-  return {
-    indexes: col('index_group_name'),
-    groups: col('product_group_name'),
-    colours: col('perceived_colour_master_name'),
-  };
+async function facets() {
+  const col = (c) => db.query(`SELECT a.${c} AS name, COUNT(*) AS n FROM ${S.catalog}.products p
+    JOIN ${S.catalog}.articles a ON a.article_id = p.article_id
+    WHERE p.is_active = 1 GROUP BY a.${c} ORDER BY n DESC, name`);
+  const [indexes, groups, colours] = await Promise.all([col('index_group_name'), col('product_group_name'), col('perceived_colour_master_name')]);
+  return { indexes, groups, colours };
 }
 
-function get(articleId) {
-  return decorate(db.prepare(`${SELECT} WHERE p.article_id = ?`).get(articleId));
+async function get(articleId) {
+  return decorate(await db.one(`${SELECT} WHERE p.article_id = ?`, [String(articleId)]));
 }
 
 /** 같은 product_code 의 다른 색상 */
-function variants(product) {
-  return db.prepare(`${SELECT} WHERE a.product_code = ? AND p.is_active = 1 ORDER BY a.article_id`)
-    .all(product.product_code).map(decorate);
+async function variants(product) {
+  return (await db.query(`${SELECT} WHERE a.product_code = ? AND p.is_active = 1 ORDER BY a.article_id`, [product.product_code])).map(decorate);
 }
 
 /** 이 상품을 산 고객이 함께 산 상품 (H&M 거래 기반 간단한 공동구매 추천) */
-function alsoBought(articleId, limit = 4) {
-  return db.prepare(`
-    WITH buyers AS (SELECT DISTINCT customer_id FROM transactions WHERE article_id = :id LIMIT 400)
-    SELECT t.article_id, COUNT(*) AS n FROM transactions t JOIN buyers b USING(customer_id)
-    JOIN products p ON p.article_id = t.article_id AND p.is_active = 1
-    WHERE t.article_id <> :id GROUP BY t.article_id ORDER BY n DESC LIMIT :limit`)
-    .all({ id: articleId, limit }).map((r) => get(r.article_id));
+async function alsoBought(articleId, limit = 4) {
+  const rows = await db.query(`
+    SELECT t.article_id, COUNT(*) AS n
+    FROM (SELECT DISTINCT customer_id FROM ${S.catalog}.transactions WHERE article_id = :id LIMIT 400) b
+    JOIN ${S.catalog}.transactions t ON t.customer_id = b.customer_id
+    JOIN ${S.catalog}.products p ON p.article_id = t.article_id AND p.is_active = 1
+    WHERE t.article_id <> :id GROUP BY t.article_id ORDER BY n DESC, t.article_id LIMIT ${Number(limit)}`, { id: articleId });
+  return Promise.all(rows.map((r) => get(r.article_id)));
 }
 
 /** 해당 상품의 H&M 월별 판매량 (최근 12개월) */
 function monthlySales(articleId) {
-  return db.prepare(`
-    SELECT substr(t_dat, 1, 7) AS month, COUNT(*) AS units FROM transactions
-    WHERE article_id = ? AND t_dat >= date((SELECT MAX(t_dat) FROM transactions), '-365 day')
-    GROUP BY month ORDER BY month`).all(articleId);
+  return db.query(`
+    SELECT DATE_FORMAT(t_dat, '%Y-%m') AS month, COUNT(*) AS units FROM ${S.catalog}.transactions
+    WHERE article_id = ? AND t_dat >= (SELECT MAX(t_dat) FROM ${S.catalog}.transactions) - INTERVAL 365 DAY
+    GROUP BY month ORDER BY month`, [articleId]);
 }
 
-function update(articleId, { price_krw, stock, is_active }) {
-  db.prepare(`UPDATE products SET price_krw = :price, stock = :stock, is_active = :active,
-      updated_at = datetime('now') WHERE article_id = :id`)
-    .run({ id: articleId, price: price_krw, stock, active: is_active ? 1 : 0 });
+/** 가격·재고·노출 수정 (tx: 같은 트랜잭션에서 outbox 를 함께 기록하기 위함) */
+function update(tx, articleId, { price_krw, stock, is_active }) {
+  return tx.exec(`UPDATE ${S.catalog}.products SET price_krw = :price, stock = :stock, is_active = :active WHERE article_id = :id`,
+    { id: articleId, price: price_krw, stock, active: is_active ? 1 : 0 });
 }
 
-function inventorySummary() {
-  return db.prepare(`SELECT COUNT(*) AS total, SUM(is_active) AS active,
-      SUM(CASE WHEN stock = 0 THEN 1 ELSE 0 END) AS sold_out,
-      SUM(CASE WHEN stock BETWEEN 1 AND 9 THEN 1 ELSE 0 END) AS low_stock FROM products`).get();
+async function inventorySummary() {
+  const r = await db.one(`SELECT COUNT(*) AS total, COALESCE(SUM(is_active), 0) AS active,
+      COALESCE(SUM(stock = 0), 0) AS sold_out, COALESCE(SUM(stock BETWEEN 1 AND 9), 0) AS low_stock FROM ${S.catalog}.products`);
+  return Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v)]));
 }
 
-module.exports = { list, facets, get, variants, alsoBought, monthlySales, update, inventorySummary, sizesFor, imageUrl };
+module.exports = { list, facets, get, variants, alsoBought, monthlySales, update, inventorySummary, sizesFor, imageUrl, decorate };

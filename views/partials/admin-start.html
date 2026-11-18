@@ -19,6 +19,9 @@
       <a href="/admin/audit" class="<%= adminNav === 'audit' ? 'is-active' : '' %>">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>작업 기록
       </a>
+      <a href="/admin/jobs" class="<%= adminNav === 'jobs' ? 'is-active' : '' %>">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 5h9l-2.5-2.5M14 11H5l2.5 2.5"/></svg>후처리 작업
+      </a>
     </nav>
     <div class="who">
       <span class="eyebrow" style="font-size:11px"><%= auth.adminRole === 'super' ? 'Super admin' : 'Manager' %></span>

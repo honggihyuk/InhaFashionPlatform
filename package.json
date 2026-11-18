@@ -6,20 +6,28 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning app.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch app.js",
-    "data:sample": "python3 analysis/generate_sample_data.py && python3 analysis/load_hm_data.py",
-    "data:load": "python3 analysis/load_hm_data.py",
+    "data:sample": "node scripts/py.js analysis/generate_sample_data.py && node scripts/py.js analysis/load_hm_data.py",
+    "data:load": "node scripts/py.js analysis/load_hm_data.py",
     "seed": "node --disable-warning=ExperimentalWarning db/seed.js --orders",
-    "analyze": "python3 analysis/sales_trend.py",
-    "setup": "npm run data:sample && npm run seed && npm run analyze",
-    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\"",
-    "test:py": "python3 -m unittest discover -s analysis/tests -t .",
-    "test:all": "npm test && npm run test:py"
+    "analyze": "node --disable-warning=ExperimentalWarning scripts/analyze.js",
+    "setup": "npm run data:sample && npm run seed && npm run analyze && npm run search:reindex",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "test:py": "node scripts/py.js -m unittest discover -s analysis/tests -t .",
+    "test:all": "npm test && npm run test:py",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "search:reindex": "node --disable-warning=ExperimentalWarning scripts/reindex.js",
+    "worker": "node --disable-warning=ExperimentalWarning worker.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
+    "@elastic/elasticsearch": "^8.19.2",
+    "amqplib": "^2.4.0",
     "ejs": "^7.0.2",
     "express": "^5.3.0",
-    "express-session": "^1.19.0"
+    "express-session": "^1.19.0",
+    "mongodb": "^7.9.0",
+    "mysql2": "^3.24.6"
   },
   "private": true,
   "engines": {

@@ -1,75 +1,81 @@
 -- =====================================================================
--- CATALOG 스키마 (catalog.db, 메인 DB)
--- H&M Personalized Fashion Recommendations 원본 3개 테이블 + 판매용 상품 정보
--- 관리자/이용자 양쪽이 읽는 공용 데이터. 원본 컬럼명을 그대로 유지합니다.
+-- CATALOG 스키마 (MySQL database `{{catalog}}`)
+-- H&M 원본 3개 테이블 + 판매용 상품 정보 + 행사 상품.
+-- 재고 차감·가격 변경처럼 정합성이 중요한 데이터라 MySQL(InnoDB 트랜잭션)에 둡니다.
 -- =====================================================================
-CREATE TABLE IF NOT EXISTS articles (
-  article_id                   TEXT PRIMARY KEY,   -- 10자리, 앞자리 0 유지 (예: 0108775015)
-  product_code                 TEXT NOT NULL,
-  prod_name                    TEXT NOT NULL,
-  product_type_no              INTEGER,
-  product_type_name            TEXT,
-  product_group_name           TEXT,
-  graphical_appearance_no      INTEGER,
-  graphical_appearance_name    TEXT,
-  colour_group_code            TEXT,
-  colour_group_name            TEXT,
-  perceived_colour_value_id    INTEGER,
-  perceived_colour_value_name  TEXT,
-  perceived_colour_master_id   INTEGER,
-  perceived_colour_master_name TEXT,
-  department_no                INTEGER,
-  department_name              TEXT,
-  index_code                   TEXT,
-  index_name                   TEXT,
-  index_group_no               INTEGER,
-  index_group_name             TEXT,
-  section_no                   INTEGER,
-  section_name                 TEXT,
-  garment_group_no             INTEGER,
-  garment_group_name           TEXT,
-  detail_desc                  TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_articles_group ON articles(index_group_name, product_group_name);
-CREATE INDEX IF NOT EXISTS idx_articles_code  ON articles(product_code);
+CREATE DATABASE IF NOT EXISTS `{{catalog}}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
-CREATE TABLE IF NOT EXISTS customers (
-  customer_id            TEXT PRIMARY KEY,
-  FN                     REAL,
-  Active                 REAL,
-  club_member_status     TEXT,
-  fashion_news_frequency TEXT,
-  age                    INTEGER,
-  postal_code            TEXT
-);
+CREATE TABLE IF NOT EXISTS `{{catalog}}`.articles (
+  article_id                   CHAR(10)     NOT NULL PRIMARY KEY,  -- 10자리, 앞자리 0 유지
+  product_code                 CHAR(7)      NOT NULL,
+  prod_name                    VARCHAR(200) NOT NULL,
+  product_type_no              INT,
+  product_type_name            VARCHAR(100),
+  product_group_name           VARCHAR(100),
+  graphical_appearance_no      INT,
+  graphical_appearance_name    VARCHAR(100),
+  colour_group_code            VARCHAR(4),
+  colour_group_name            VARCHAR(100),
+  perceived_colour_value_id    INT,
+  perceived_colour_value_name  VARCHAR(100),
+  perceived_colour_master_id   INT,
+  perceived_colour_master_name VARCHAR(100),
+  department_no                INT,
+  department_name              VARCHAR(200),
+  index_code                   VARCHAR(4),
+  index_name                   VARCHAR(100),
+  index_group_no               INT,
+  index_group_name             VARCHAR(100),
+  section_no                   INT,
+  section_name                 VARCHAR(200),
+  garment_group_no             INT,
+  garment_group_name           VARCHAR(100),
+  detail_desc                  TEXT,
+  KEY idx_articles_group (index_group_name, product_group_name),
+  KEY idx_articles_code (product_code)
+) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS transactions (
-  t_dat            TEXT NOT NULL,     -- YYYY-MM-DD (원본에는 시각 정보가 없음)
-  customer_id      TEXT NOT NULL,
-  article_id       TEXT NOT NULL,
-  price            REAL NOT NULL,     -- H&M이 정규화한 가격
-  sales_channel_id INTEGER NOT NULL   -- 1: 오프라인 매장, 2: 온라인
-);
-CREATE INDEX IF NOT EXISTS idx_tx_date    ON transactions(t_dat);
-CREATE INDEX IF NOT EXISTS idx_tx_article ON transactions(article_id);
+CREATE TABLE IF NOT EXISTS `{{catalog}}`.customers (
+  customer_id            CHAR(64) NOT NULL PRIMARY KEY,
+  FN                     DOUBLE,
+  Active                 DOUBLE,
+  club_member_status     VARCHAR(20),
+  fashion_news_frequency VARCHAR(20),
+  age                    INT,
+  postal_code            CHAR(64)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `{{catalog}}`.transactions (
+  id               BIGINT AUTO_INCREMENT PRIMARY KEY,
+  t_dat            DATE        NOT NULL,   -- 원본에는 시각 정보가 없음
+  customer_id      VARCHAR(64) NOT NULL,
+  article_id       CHAR(10)    NOT NULL,
+  price            DOUBLE      NOT NULL,   -- H&M 정규화 가격
+  sales_channel_id TINYINT     NOT NULL,   -- 1: 매장, 2: 온라인
+  KEY idx_tx_date (t_dat),
+  KEY idx_tx_article (article_id, t_dat),
+  KEY idx_tx_customer (customer_id)
+) ENGINE=InnoDB;
 
 -- 판매용 상품 정보 (관리자가 가격/재고/노출 여부를 관리)
-CREATE TABLE IF NOT EXISTS products (
-  article_id  TEXT PRIMARY KEY REFERENCES articles(article_id),
-  price_krw   INTEGER NOT NULL,
-  stock       INTEGER NOT NULL DEFAULT 0,
-  is_active   INTEGER NOT NULL DEFAULT 1,
-  popularity  INTEGER NOT NULL DEFAULT 0,  -- 최근 판매량(정렬용)
-  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
+CREATE TABLE IF NOT EXISTS `{{catalog}}`.products (
+  article_id  CHAR(10) NOT NULL PRIMARY KEY,
+  price_krw   INT      NOT NULL,
+  stock       INT      NOT NULL DEFAULT 0,
+  is_active   TINYINT  NOT NULL DEFAULT 1,
+  popularity  INT      NOT NULL DEFAULT 0,   -- 최근 판매량(정렬용)
+  updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT chk_stock CHECK (stock >= 0),
+  CONSTRAINT fk_products_article FOREIGN KEY (article_id) REFERENCES `{{catalog}}`.articles(article_id)
+) ENGINE=InnoDB;
 
--- 행사(할인) 상품: PyTorch 분석이 추천한 후보 중 관리자가 승인한 상품만 등록됩니다.
--- 할인가는 저장하지 않고 정가(products.price_krw) × (100 - discount_pct)% 를 100원 단위로 반올림해 계산합니다.
-CREATE TABLE IF NOT EXISTS promotions (
-  article_id   TEXT PRIMARY KEY,
-  discount_pct INTEGER NOT NULL CHECK (discount_pct BETWEEN 5 AND 70),
-  reason       TEXT,                 -- 추천 근거 (예: 재고 1년치 이상 · 최근 4주 판매 -80%)
-  score        REAL,                 -- PyTorch 추천 점수 (0~1, 직접 등록 시 NULL)
-  approved_by  INTEGER,              -- admin.admin_users.id
-  approved_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
+-- 행사(할인) 상품: PyTorch 추천 후보 중 관리자가 승인한 상품
+CREATE TABLE IF NOT EXISTS `{{catalog}}`.promotions (
+  article_id   CHAR(10)     NOT NULL PRIMARY KEY,
+  discount_pct INT          NOT NULL,
+  reason       VARCHAR(500),
+  score        DOUBLE,
+  approved_by  INT,
+  approved_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_discount CHECK (discount_pct BETWEEN 5 AND 70)
+) ENGINE=InnoDB;

@@ -9,12 +9,13 @@
     <% } %>
   </div>
   <div style="display:flex;gap:10px;align-items:center">
-    <span id="run-status" class="status <%= lastRun && lastRun.status === 'running' ? 'status-pending' : lastRun && lastRun.status === 'failed' ? 'status-bad' : 'status-ok' %>">
-      <%= lastRun ? (lastRun.status === 'running' ? '분석 실행 중' : lastRun.status === 'failed' ? '최근 분석 실패' : '분석 최신') : (result ? '분석 결과 있음' : '분석 전') %>
+    <% var busy = lastRun && (lastRun.status === 'running' || lastRun.status === 'queued'); %>
+    <span id="run-status" class="status <%= busy ? 'status-pending' : lastRun && lastRun.status === 'failed' ? 'status-bad' : 'status-ok' %>">
+      <%= lastRun ? (lastRun.status === 'queued' ? '분석 대기 중 (워커)' : lastRun.status === 'running' ? '분석 실행 중' : lastRun.status === 'failed' ? '최근 분석 실패' : '분석 최신') : (result ? '분석 결과 있음' : '분석 전') %>
     </span>
     <form id="run-form" method="post" action="/admin/analysis/run">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <button class="btn btn-primary btn-sm" type="submit" <%= lastRun && lastRun.status === 'running' ? 'disabled' : '' %>>PyTorch 분석 다시 실행</button>
+      <button class="btn btn-primary btn-sm" type="submit" <%= busy ? 'disabled' : '' %>>PyTorch 분석 다시 실행</button>
     </form>
   </div>
 </div>
@@ -235,7 +236,7 @@
         <div class="growth-row" style="grid-template-columns:auto 1fr auto">
           <span class="mono soft" style="font-size:12px">#<%= r.id %></span>
           <span style="font-size:13px"><%= r.started_at %> <span class="soft"><%= r.admin_name || 'CLI' %></span></span>
-          <span class="status <%= r.status === 'success' ? 'status-ok' : r.status === 'running' ? 'status-pending' : 'status-bad' %>"><%= r.status === 'success' ? '성공' : r.status === 'running' ? '실행 중' : '실패' %></span>
+          <span class="status <%= r.status === 'success' ? 'status-ok' : (r.status === 'running' || r.status === 'queued') ? 'status-pending' : 'status-bad' %>"><%= r.status === 'success' ? '성공' : r.status === 'running' ? '실행 중' : r.status === 'queued' ? '대기' : '실패' %></span>
         </div>
       <% }) %>
       <% if (!history.length) { %><p class="muted" style="font-size:13px">CLI(python analysis/sales_trend.py)로 생성된 결과입니다.</p><% } %>
@@ -254,7 +255,7 @@
     var status = document.getElementById('run-status');
     function poll() {
       fetch('/admin/api/analysis/status').then(function (r) { return r.json(); }).then(function (run) {
-        if (run && run.status === 'running') { setTimeout(poll, 1500); return; }
+        if (run && (run.status === 'running' || run.status === 'queued')) { setTimeout(poll, 1500); return; }
         location.reload();
       });
     }
@@ -262,11 +263,11 @@
       e.preventDefault();
       form.querySelector('button').disabled = true;
       status.className = 'status status-pending';
-      status.textContent = '분석 실행 중… (PyTorch 모델 학습)';
+      status.textContent = '분석 요청됨… (RabbitMQ 워커가 PyTorch 실행)';
       fetch(form.action, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(new FormData(form)) })
         .then(function () { setTimeout(poll, 1500); });
     });
-    <% if (lastRun && lastRun.status === 'running') { %>setTimeout(poll, 1500);<% } %>
+    <% if (busy) { %>setTimeout(poll, 1500);<% } %>
   })();
 </script>
 <%- include('../partials/admin-end.html') %>

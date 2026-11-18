@@ -1,33 +1,38 @@
-// 관리자 계정 모델 (admin 스키마) — 이용자 계정과 별도 DB 파일/스키마로 관리
-const { db } = require('../db/connection');
+// 관리자 계정 모델 (MySQL admin 스키마) — 이용자 계정과 별도 스키마로 관리
+// 감사 로그는 MongoDB audit_log 에 있으며, 관리자 작업 이벤트를 RabbitMQ 후처리(audit-writer)가 기록합니다.
+const db = require('../db/mysql');
+const mongo = require('../db/mongo');
 const password = require('../services/password');
 
+const { S } = db;
+const norm = (email) => String(email).toLowerCase().trim();
+
 function findByEmail(email) {
-  return db.prepare('SELECT * FROM admin.admin_users WHERE email = ?').get(String(email).toLowerCase().trim());
+  return db.one(`SELECT * FROM ${S.admin}.admin_users WHERE email = ?`, [norm(email)]);
 }
 
-function create({ email, name, role = 'manager', plainPassword }) {
-  db.prepare('INSERT INTO admin.admin_users (email, password_hash, name, role) VALUES (?, ?, ?, ?)')
-    .run(String(email).toLowerCase().trim(), password.hash(plainPassword), name, role);
+async function create({ email, name, role = 'manager', plainPassword }) {
+  await db.exec(`INSERT INTO ${S.admin}.admin_users (email, password_hash, name, role) VALUES (?, ?, ?, ?)`,
+    [norm(email), password.hash(plainPassword), name, role]);
   return findByEmail(email);
 }
 
-function authenticate(email, plainPassword) {
-  const admin = findByEmail(email);
+async function authenticate(email, plainPassword) {
+  const admin = await findByEmail(email);
   if (!admin || !password.verify(plainPassword, admin.password_hash)) return null;
-  db.prepare("UPDATE admin.admin_users SET last_login_at = datetime('now') WHERE id = ?").run(admin.id);
+  await db.exec(`UPDATE ${S.admin}.admin_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?`, [admin.id]);
   const { password_hash, ...safe } = admin;
   return safe;
 }
 
-function audit(adminId, action, target, detail) {
-  db.prepare('INSERT INTO admin.audit_log (admin_id, action, target, detail) VALUES (?, ?, ?, ?)')
-    .run(adminId, action, target || null, detail ? JSON.stringify(detail) : null);
+/** 이벤트 actor 정보 (세션 → outbox 이벤트에 실음) */
+function actorOf(session) {
+  return { type: 'admin', id: session.auth.id, name: session.auth.name };
 }
 
-function recentAudit(limit = 10) {
-  return db.prepare(`SELECT l.*, a.name AS admin_name FROM admin.audit_log l
-    LEFT JOIN admin.admin_users a ON a.id = l.admin_id ORDER BY l.id DESC LIMIT ?`).all(limit);
+async function recentAudit(limit = 100) {
+  const c = await mongo.col('audit_log');
+  return c.find({}).sort({ created_at: -1 }).limit(limit).toArray();
 }
 
-module.exports = { findByEmail, create, authenticate, audit, recentAudit };
+module.exports = { findByEmail, create, authenticate, actorOf, recentAudit };

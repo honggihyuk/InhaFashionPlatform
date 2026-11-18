@@ -1,0 +1,61 @@
+# InhaFashionPlatform 인프라 (개발용)
+#   docker compose up -d        MySQL, MongoDB, Elasticsearch, RabbitMQ 실행
+#   docker compose down -v      데이터까지 삭제
+name: inhafashion
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: inha-root
+      MYSQL_USER: inha
+      MYSQL_PASSWORD: inha-pass
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--local-infile=1"]
+    ports: ["3306:3306"]
+    volumes: [mysql-data:/var/lib/mysql, ./db/mysql-init:/docker-entrypoint-initdb.d:ro]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pinha-root"]
+      interval: 5s
+      retries: 30
+
+  mongo:
+    image: mongo:7.0
+    ports: ["27017:27017"]
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      retries: 30
+
+  elasticsearch:
+    image: elasticsearch:8.15.3
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      # 개발 PC 디스크 여유가 적어도 샤드가 배정되도록 디스크 워터마크 검사를 끔 (운영에서는 켜 두세요)
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports: ["9200:9200"]
+    volumes: [es-data:/usr/share/elasticsearch/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: inha
+      RABBITMQ_DEFAULT_PASS: inha-pass
+    ports: ["5672:5672", "15672:15672"]
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      retries: 30
+
+volumes:
+  mysql-data:
+  mongo-data:
+  es-data:
+  rabbitmq-data:

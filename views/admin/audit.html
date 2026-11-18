@@ -1,25 +1,27 @@
 <%- include('../partials/admin-start.html') %>
 <div class="admin-head">
   <div>
-    <div class="eyebrow">Audit log · admin schema</div>
+    <div class="eyebrow">Audit log · MongoDB</div>
     <h1 class="h1">작업 기록</h1>
-    <p class="muted" style="margin-top:8px;font-size:14px">관리자가 수행한 가격·재고 변경, 주문 상태 변경, 분석 실행 기록입니다.</p>
+    <p class="muted" style="margin-top:8px;font-size:14px">관리자가 수행한 가격·재고 변경, 주문 상태 변경, 행사, 분석 실행, 재처리 기록입니다. 작업 직후 RabbitMQ 후처리로 기록되므로 몇 초 늦게 보일 수 있습니다.</p>
   </div>
 </div>
+<% if (error) { %><div class="flash flash-error" role="alert">MongoDB 에 연결할 수 없어 작업 기록을 불러오지 못했습니다. (<%= error %>)</div><% } %>
 <div class="chart-card" style="padding:8px 8px 0">
   <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>시각 (UTC)</th><th>관리자</th><th>작업</th><th>대상</th><th>내용</th></tr></thead>
+      <thead><tr><th>시각</th><th>관리자</th><th>작업</th><th>대상</th><th>내용</th></tr></thead>
       <tbody>
         <% var names = { 'analysis.run': '분석 실행', 'product.update': '상품 수정', 'order.status': '주문 상태 변경',
-          'promotion.approve': '행사 승인', 'promotion.update': '행사 할인율 변경', 'promotion.end': '행사 종료' }; %>
+             'promotion.approve': '행사 승인', 'promotion.update': '행사 할인율 변경', 'promotion.end': '행사 종료', 'jobs.replay': '실패 작업 재처리' }; %>
+        <% var fmt = function (d) { var t = new Date(d); return new Date(t.getTime() + 9 * 3600000).toISOString().replace('T', ' ').slice(0, 19); }; %>
         <% logs.forEach(function (l) { %>
           <tr>
-            <td class="num" style="font-size:13px"><%= l.created_at %></td>
+            <td class="num" style="font-size:13px;white-space:nowrap"><%= fmt(l.created_at) %></td>
             <td style="font-size:13px"><%= l.admin_name %></td>
             <td><%= names[l.action] || l.action %></td>
             <td class="mono" style="font-size:12px"><%= l.target %></td>
-            <td class="mono soft" style="font-size:11px;max-width:380px;word-break:break-all"><%= l.detail %></td>
+            <td class="mono soft" style="font-size:11px;max-width:380px;word-break:break-all"><%= l.detail ? JSON.stringify(l.detail) : '' %></td>
           </tr>
         <% }) %>
         <% if (!logs.length) { %><tr><td colspan="5" class="muted" style="text-align:center;padding:40px">기록이 없습니다.</td></tr><% } %>
@@ -27,4 +29,5 @@
     </table>
   </div>
 </div>
+<p class="note" style="margin-top:12px">시각은 한국 표준시(KST) 기준입니다.</p>
 <%- include('../partials/admin-end.html') %>

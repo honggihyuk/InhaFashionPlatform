@@ -1,0 +1,32 @@
+<%- include('../partials/head.html', { styles: ['shop', 'auth'] }) %>
+<body>
+<main class="auth">
+  <section class="auth-visual">
+    <a class="wordmark" href="/">InhaFashion <span class="mono">H&amp;M EDITION</span></a>
+    <div>
+      <div class="media-label" style="opacity:.7;margin-bottom:16px">Create account</div>
+      <h1 class="h1">가입하고 바로 쇼핑을 시작하세요.</h1>
+      <p style="margin-top:16px;opacity:.72;max-width:420px">5만원 이상 주문 시 무료 배송. 주문 내역과 배송 상태를 한 곳에서 확인할 수 있습니다.</p>
+    </div>
+    <div class="auth-toast"><span class="dot">✓</span><span>가입 정보는 이용자(member) 스키마에만 저장됩니다</span></div>
+  </section>
+  <section class="auth-form">
+    <div class="auth-box">
+      <h2 class="h2">회원가입</h2>
+      <% if (error) { %><div class="flash flash-error" role="alert"><%= error %></div><% } %>
+      <form method="post" action="/signup" class="form-grid">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="field"><label for="email">이메일</label><input class="input" id="email" name="email" type="email" required value="<%= form.email || '' %>" autocomplete="email"></div>
+        <div class="field"><label for="name">이름</label><input class="input" id="name" name="name" required value="<%= form.name || '' %>" autocomplete="name"></div>
+        <div class="field"><label for="password">비밀번호 (8자 이상)</label><input class="input" id="password" name="password" type="password" minlength="8" required autocomplete="new-password"></div>
+        <div class="field"><label for="password2">비밀번호 확인</label><input class="input" id="password2" name="password2" type="password" minlength="8" required autocomplete="new-password"></div>
+        <div class="field"><label for="phone">휴대폰 (선택)</label><input class="input" id="phone" name="phone" value="<%= form.phone || '' %>" autocomplete="tel" placeholder="010-0000-0000"></div>
+        <div class="field"><label for="address">배송지 (선택)</label><input class="input" id="address" name="address" value="<%= form.address || '' %>" autocomplete="street-address"></div>
+        <button class="btn btn-primary btn-block" type="submit">가입하기</button>
+      </form>
+      <p class="muted" style="font-size:14px">이미 계정이 있으신가요? <a class="link" href="/login">로그인</a></p>
+    </div>
+  </section>
+</main>
+</body>
+</html>

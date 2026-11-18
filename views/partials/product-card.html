@@ -1,0 +1,17 @@
+<a class="product-card" href="/products/<%= p.article_id %>">
+  <div class="media">
+    <img src="<%= p.image %>" alt="<%= p.prod_name %>" loading="lazy" width="240" height="300">
+    <% if (p.stock === 0) { %><span class="badge media-label">품절</span><% } else if (p.stock < 10) { %><span class="badge media-label">재고 <%= p.stock %></span><% } %>
+    <% if (p.discount_pct) { %><span class="badge sale-badge media-label">SALE <%= p.discount_pct %>%</span><% } %>
+  </div>
+  <div>
+    <div class="eyebrow soft" style="font-size:11px;margin-bottom:6px"><%= ko(p.index_group_name) %> · <%= p.product_type_name %></div>
+    <div class="name"><%= p.prod_name %></div>
+    <div class="meta"><%= p.colour_group_name %></div>
+  </div>
+  <% if (p.discount_pct) { %>
+    <div class="price num"><span class="sale-pct"><%= p.discount_pct %>%</span> <%= won(p.final_price_krw) %> <s class="list-price"><%= won(p.price_krw) %></s></div>
+  <% } else { %>
+    <div class="price num"><%= won(p.price_krw) %></div>
+  <% } %>
+</a>

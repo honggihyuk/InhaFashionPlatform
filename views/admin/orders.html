@@ -1,0 +1,57 @@
+<%- include('../partials/admin-start.html') %>
+<div class="admin-head">
+  <div>
+    <div class="eyebrow">Orders</div>
+    <h1 class="h1">주문 관리</h1>
+    <p class="muted" style="margin-top:8px;font-size:14px">이용자 주문 <span class="num"><%= list.total.toLocaleString('ko-KR') %></span>건. 배송 상태를 변경하면 이용자 주문 내역에 바로 반영되고, 취소 시 재고가 복원됩니다.</p>
+  </div>
+</div>
+
+<div class="filter-row" role="group" aria-label="상태 필터">
+  <a class="pill <%= !status ? 'is-active' : '' %>" href="/admin/orders">전체</a>
+  <% Object.keys(labels).forEach(function (k) { %>
+    <a class="pill <%= status === k ? 'is-active' : '' %>" href="/admin/orders?status=<%= k %>"><%= labels[k] %></a>
+  <% }) %>
+</div>
+
+<div class="chart-card" style="padding:8px 8px 0">
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>주문번호</th><th>주문 시각</th><th>고객</th><th class="right">수량</th><th class="right">결제 금액</th><th>상태</th><th>상태 변경</th></tr></thead>
+      <tbody>
+        <% var cls = { PAID: 'status-pending', SHIPPING: 'status-pending', DELIVERED: 'status-ok', CANCELLED: 'status-muted' }; %>
+        <% list.rows.forEach(function (o) { %>
+          <tr>
+            <td class="mono" style="font-size:12px"><%= o.order_no %><% if (o.source === 'seed') { %> <span class="soft">· demo</span><% } %></td>
+            <td class="num" style="font-size:13px"><%= o.created_at %></td>
+            <td style="font-size:13px"><%= o.user_name %><br><span class="soft"><%= o.user_email %></span></td>
+            <td class="right num"><%= o.units %></td>
+            <td class="right num"><%= won(o.total_krw) %></td>
+            <td><span class="status <%= cls[o.status] %>"><%= o.status_label %></span></td>
+            <td>
+              <% if (o.status !== 'CANCELLED') { %>
+              <form method="post" action="/admin/orders/<%= o.id %>/status" class="inline-form">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <label class="sr-only" for="s-<%= o.id %>">상태</label>
+                <select class="select" id="s-<%= o.id %>" name="status" style="width:auto;padding:7px 34px 7px 12px;font-size:13px;border-radius:999px">
+                  <% Object.keys(labels).forEach(function (k) { %><option value="<%= k %>" <%= o.status === k ? 'selected' : '' %>><%= labels[k] %></option><% }) %>
+                </select>
+                <button class="btn btn-secondary btn-sm" type="submit">변경</button>
+              </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (!list.rows.length) { %><tr><td colspan="7" class="muted" style="text-align:center;padding:40px">주문이 없습니다.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% if (list.pages > 1) { %>
+  <nav style="display:flex;gap:6px;justify-content:center;margin-top:24px" aria-label="페이지">
+    <% if (list.page > 1) { %><a class="pill" href="/admin/orders?<%= status ? 'status=' + status + '&' : '' %>page=<%= list.page - 1 %>">← 이전</a><% } %>
+    <span class="pill is-active num"><%= list.page %> / <%= list.pages %></span>
+    <% if (list.page < list.pages) { %><a class="pill" href="/admin/orders?<%= status ? 'status=' + status + '&' : '' %>page=<%= list.page + 1 %>">다음 →</a><% } %>
+  </nav>
+<% } %>
+<%- include('../partials/admin-end.html') %>

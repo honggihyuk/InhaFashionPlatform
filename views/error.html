@@ -1,0 +1,16 @@
+<%- include('partials/head.html') %>
+<body>
+<%- include('partials/nav.html') %>
+<main class="container error-page">
+  <div>
+    <div class="eyebrow muted">InhaFashion</div>
+    <h1 class="display"><%= title %></h1>
+    <p class="lede"><%= message %></p>
+    <div style="margin-top:28px;display:flex;gap:10px;justify-content:center">
+      <a class="btn btn-primary" href="/">홈으로</a>
+      <a class="btn btn-secondary" href="/login">로그인</a>
+    </div>
+  </div>
+</main>
+</body>
+</html>

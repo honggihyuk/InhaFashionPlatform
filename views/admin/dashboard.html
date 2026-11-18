@@ -1,0 +1,272 @@
+<%- include('../partials/admin-start.html') %>
+<% var s = result && result.summary; var f = result && result.forecast; var h = result && result.hourly; %>
+<div class="admin-head">
+  <div>
+    <div class="eyebrow">Sales analytics · PyTorch</div>
+    <h1 class="h1">판매 추이 대시보드</h1>
+    <% if (s) { %>
+      <p class="muted" style="margin-top:8px;font-size:14px">H&amp;M 거래 <span class="num"><%= s.transactions.toLocaleString('ko-KR') %></span>건 · <%= s.period.from %> ~ <%= s.period.to %> · 분석 시각 <%= result.generated_at.replace('T', ' ') %></p>
+    <% } %>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span id="run-status" class="status <%= lastRun && lastRun.status === 'running' ? 'status-pending' : lastRun && lastRun.status === 'failed' ? 'status-bad' : 'status-ok' %>">
+      <%= lastRun ? (lastRun.status === 'running' ? '분석 실행 중' : lastRun.status === 'failed' ? '최근 분석 실패' : '분석 최신') : (result ? '분석 결과 있음' : '분석 전') %>
+    </span>
+    <form id="run-form" method="post" action="/admin/analysis/run">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <button class="btn btn-primary btn-sm" type="submit" <%= lastRun && lastRun.status === 'running' ? 'disabled' : '' %>>PyTorch 분석 다시 실행</button>
+    </form>
+  </div>
+</div>
+
+<% if (!result) { %>
+  <div class="card empty-state">
+    <div class="eyebrow">No analysis yet</div>
+    <h2 class="h2">아직 분석 결과가 없습니다</h2>
+    <p class="muted">오른쪽 위 버튼으로 PyTorch 분석을 실행하면 시간대별 판매 추이와 예측이 표시됩니다.</p>
+    <% if (lastRun && lastRun.status === 'failed') { %><pre class="run-log" style="background:var(--color-espresso-panel);text-align:left;max-width:100%"><%= lastRun.log %></pre><% } %>
+  </div>
+<% } else { %>
+
+<section class="kpis" aria-label="핵심 지표">
+  <div class="kpi">
+    <span class="media-label">Revenue · last 28 days</span>
+    <span class="value num"><%= won(s.last_28d_revenue) %></span>
+    <span class="delta <%= s.last_28d_change_pct >= 0 ? 'up' : 'down' %>"><%= s.last_28d_change_pct >= 0 ? '▲' : '▼' %> 직전 28일 대비 <%= Math.abs(s.last_28d_change_pct) %>%</span>
+  </div>
+  <div class="kpi">
+    <span class="media-label">Forecast · next 4 weeks</span>
+    <span class="value num"><%= won(f.next_4w_total) %></span>
+    <% var fc = (f.next_4w_total / f.last_4w_total - 1) * 100; %>
+    <span class="delta <%= fc >= 0 ? 'up' : 'down' %>"><%= fc >= 0 ? '▲' : '▼' %> 최근 4주 대비 <%= Math.abs(fc).toFixed(1) %>%</span>
+  </div>
+  <div class="kpi">
+    <span class="media-label">Online share</span>
+    <span class="value num"><%= s.online_share_pct %>%</span>
+    <span class="delta" style="color:rgba(255,255,255,.62)">전체 기간 매출 기준</span>
+  </div>
+  <div class="kpi">
+    <span class="media-label">Platform orders · today</span>
+    <span class="value num"><%= platform.today.orders %>건</span>
+    <span class="delta" style="color:rgba(255,255,255,.62)"><%= won(platform.today.revenue) %> · 처리 대기 <%= platform.pending %>건</span>
+  </div>
+</section>
+
+<section class="grid-3-1" style="margin-top:20px">
+  <div class="chart-card">
+    <div class="chart-head">
+      <div>
+        <div class="eyebrow">Hourly trend</div>
+        <h2 class="h3">시간대별 판매 추이</h2>
+        <p>0~23시 시간대별 하루 평균 <span data-hour-label>주문 수</span>. 시각이 기록되는 플랫폼 주문 <span class="num"><%= h ? h.orders.toLocaleString('ko-KR') : 0 %></span>건(<%= h && h.days %>일) 기준이며, 막대 위에 마우스를 올리면 값이 보입니다.</p>
+      </div>
+      <div class="seg" role="group" aria-label="지표 선택">
+        <button type="button" class="is-active" data-hour-metric="orders">주문 수</button>
+        <button type="button" data-hour-metric="revenue">매출</button>
+      </div>
+    </div>
+    <div class="chart" id="chart-hourly" style="height:260px"></div>
+    <div class="legend" style="margin-top:12px">
+      <span><i class="box" style="background:#e07122"></i>피크 시간대</span>
+      <span><i class="box" style="background:#3b281d"></i>그 외 시간대</span>
+    </div>
+  </div>
+  <div class="chart-card oat">
+    <div class="chart-head"><div><div class="eyebrow">Day parts</div><h2 class="h3">시간대 구간별 비중</h2></div></div>
+    <% if (h && h.orders) { var maxSlot = Math.max.apply(null, h.slots.map(function (x) { return x.orders; })); %>
+      <div class="slot-list">
+        <% h.slots.forEach(function (x) { %>
+          <div class="slot">
+            <span><%= x.name %></span>
+            <span class="bar"><i style="width:<%= (x.orders / maxSlot * 100).toFixed(1) %>%"></i></span>
+            <span class="num" style="text-align:right"><%= Math.round(x.orders / h.orders * 100) %>%</span>
+          </div>
+        <% }) %>
+      </div>
+      <p class="note" style="margin-top:20px"><b>데이터 출처.</b> H&amp;M 원본 transactions_train 에는 시각 없이 날짜(t_dat)만 있어 시간대 분석은 이 플랫폼 주문(member.orders)으로 계산합니다. 현재 <%= h.seed_orders.toLocaleString('ko-KR') %>건은 개발용 데모 주문(source=seed)입니다.</p>
+    <% } else { %>
+      <p class="muted">아직 플랫폼 주문이 없습니다.</p>
+    <% } %>
+  </div>
+</section>
+
+<section class="chart-card" style="margin-top:20px">
+  <div class="chart-head">
+    <div>
+      <div class="eyebrow">Weekday × hour</div>
+      <h2 class="h3">요일·시간대 주문 히트맵</h2>
+      <p>색이 진할수록 주문이 많습니다. 칸에 마우스를 올리면 주문 수가 표시됩니다.</p>
+    </div>
+  </div>
+  <div class="chart" id="chart-heatmap"></div>
+</section>
+
+<section class="grid-3-1" style="margin-top:20px">
+  <div class="chart-card">
+    <div class="chart-head">
+      <div>
+        <div class="eyebrow">Daily revenue · forecast</div>
+        <h2 class="h3">일별 매출과 4주 예측</h2>
+        <p>최근 120일 H&amp;M 일매출(실선)과 PyTorch 모델이 예측한 다음 28일(점선, 음영은 90% 구간).</p>
+      </div>
+    </div>
+    <div class="chart" id="chart-forecast" style="height:300px"></div>
+    <div class="legend" style="margin-top:12px">
+      <span><i style="background:#3b281d"></i>실제 일매출</span>
+      <span style="color:#e07122"><i class="dash"></i><span style="color:var(--color-near-black)">예측</span></span>
+      <span><i class="box" style="background:rgba(224,113,34,.18)"></i>90% 예측 구간</span>
+    </div>
+  </div>
+  <div class="panel-dark model-panel">
+    <span class="media-label" style="opacity:.7">PyTorch model</span>
+    <div style="font-size:15px;line-height:1.4"><%= f.model %></div>
+    <dl>
+      <dt>검증 MAPE (최근 <%= f.holdout.days %>일)</dt><dd><%= f.holdout.mape_pct %>%</dd>
+      <dt>검증 MAE</dt><dd><%= won(f.holdout.mae_krw) %></dd>
+      <dt>학습 일수</dt><dd><%= f.train_days %>일</dd>
+      <dt>Epochs</dt><dd><%= f.epochs %></dd>
+      <dt>최종 손실(Huber)</dt><dd><%= f.final_loss %></dd>
+      <dt>torch</dt><dd><%= result.torch_version %></dd>
+    </dl>
+    <div>
+      <div class="media-label" style="opacity:.7;margin-bottom:10px">요일 효과 (모델 계수)</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:12px">
+        <% ['월','화','수','목','금','토','일'].forEach(function (d, i) { var v = f.weekday_effect_pct[i]; %>
+          <div><div style="opacity:.6"><%= d %></div><div class="num" style="color:<%= v >= 0 ? '#7fd17d' : '#ff9b8a' %>"><%= v > 0 ? '+' : '' %><%= Math.round(v) %>%</div></div>
+        <% }) %>
+      </div>
+    </div>
+    <p class="muted" style="font-size:12px"><%= f.features %></p>
+  </div>
+</section>
+
+<section class="grid-2" style="margin-top:20px">
+  <div class="chart-card">
+    <div class="chart-head">
+      <div>
+        <div class="eyebrow">Weekly revenue</div>
+        <h2 class="h3">주별 매출 추이</h2>
+        <p>전체 기간 주 단위(월요일 시작) 매출.</p>
+      </div>
+    </div>
+    <div class="chart" id="chart-weekly" style="height:240px"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-head">
+      <div>
+        <div class="eyebrow">Weekday average</div>
+        <h2 class="h3">요일별 평균 매출</h2>
+        <p>최근 52주 기준 요일별 하루 평균 매출.</p>
+      </div>
+    </div>
+    <div class="chart" id="chart-weekday" style="height:240px"></div>
+  </div>
+</section>
+
+<section class="grid-2" style="margin-top:20px">
+  <div class="chart-card">
+    <div class="chart-head">
+      <div>
+        <div class="eyebrow">Monthly revenue</div>
+        <h2 class="h3">월별 매출</h2>
+        <p>첫 달과 마지막 달은 일부 기간만 포함됩니다.</p>
+      </div>
+    </div>
+    <div class="chart" id="chart-monthly" style="height:240px"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-head">
+      <div>
+        <div class="eyebrow">Channel mix</div>
+        <h2 class="h3">온라인 매출 비중</h2>
+        <p>월별 매출 중 온라인(sales_channel_id = 2) 비중(%). 나머지는 오프라인 매장.</p>
+      </div>
+    </div>
+    <div class="chart" id="chart-channel" style="height:240px"></div>
+  </div>
+</section>
+
+<section class="grid-2" style="margin-top:20px">
+  <div class="chart-card">
+    <div class="chart-head"><div><div class="eyebrow">Category momentum</div><h2 class="h3">카테고리 최근 4주 vs 직전 4주</h2></div></div>
+    <div class="growth-list">
+      <% result.category_growth.forEach(function (g) { %>
+        <div class="growth-row">
+          <span><%= ko(g.name) %> <span class="soft" style="font-size:12px"><%= g.name %></span></span>
+          <span class="num muted"><%= won(g.recent) %></span>
+          <span class="num <%= g.change >= 0 ? 'chg-up' : 'chg-down' %>" style="min-width:64px;text-align:right"><%= g.change >= 0 ? '+' : '' %><%= g.change %>%</span>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-head"><div><div class="eyebrow">Best sellers · last 4 weeks</div><h2 class="h3">최근 4주 베스트셀러</h2></div><a class="link" href="/admin/products" style="font-size:14px">상품 관리 →</a></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>#</th><th>상품</th><th class="right">판매량</th><th class="right">재고</th></tr></thead>
+        <tbody>
+          <% bestSellers.forEach(function (b, i) { %>
+            <tr>
+              <td class="mono"><%= i + 1 %></td>
+              <td><div class="cell-product"><span class="thumb-sm"><img src="<%= b.product.image %>" alt=""></span><span><%= b.product.prod_name %><br><span class="soft mono" style="font-size:11px"><%= b.article_id %></span></span></div></td>
+              <td class="right num"><%= b.units.toLocaleString('ko-KR') %></td>
+              <td class="right"><span class="status <%= b.product.stock === 0 ? 'status-bad' : b.product.stock < 10 ? 'status-pending' : 'status-ok' %>"><%= b.product.stock %></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="grid-3-1" style="margin-top:20px">
+  <div class="card" style="padding:32px">
+    <div class="eyebrow" style="margin-bottom:16px">Insights</div>
+    <div class="insights">
+      <% insights.forEach(function (t, i) { %>
+        <div class="insight"><span class="n">0<%= i + 1 %></span><span><%- t %></span></div>
+      <% }) %>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-head"><div><div class="eyebrow">Run history</div><h2 class="h3">분석 실행 이력</h2></div></div>
+    <div class="growth-list">
+      <% history.forEach(function (r) { %>
+        <div class="growth-row" style="grid-template-columns:auto 1fr auto">
+          <span class="mono soft" style="font-size:12px">#<%= r.id %></span>
+          <span style="font-size:13px"><%= r.started_at %> <span class="soft"><%= r.admin_name || 'CLI' %></span></span>
+          <span class="status <%= r.status === 'success' ? 'status-ok' : r.status === 'running' ? 'status-pending' : 'status-bad' %>"><%= r.status === 'success' ? '성공' : r.status === 'running' ? '실행 중' : '실패' %></span>
+        </div>
+      <% }) %>
+      <% if (!history.length) { %><p class="muted" style="font-size:13px">CLI(python analysis/sales_trend.py)로 생성된 결과입니다.</p><% } %>
+    </div>
+    <p class="note" style="margin-top:14px">회원 <%= members.toLocaleString('ko-KR') %>명 · 판매 상품 <%= inventory.active %>/<%= inventory.total %> · 품절 <%= inventory.sold_out %> · 재고 부족 <%= inventory.low_stock %></p>
+  </div>
+</section>
+
+<script src="/js/charts.js"></script>
+<script src="/js/admin-dashboard.js"></script>
+<% } %>
+<script>
+  // 분석 실행: 비동기로 시작하고 완료되면 새로고침
+  (function () {
+    var form = document.getElementById('run-form');
+    var status = document.getElementById('run-status');
+    function poll() {
+      fetch('/admin/api/analysis/status').then(function (r) { return r.json(); }).then(function (run) {
+        if (run && run.status === 'running') { setTimeout(poll, 1500); return; }
+        location.reload();
+      });
+    }
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      form.querySelector('button').disabled = true;
+      status.className = 'status status-pending';
+      status.textContent = '분석 실행 중… (PyTorch 모델 학습)';
+      fetch(form.action, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(new FormData(form)) })
+        .then(function () { setTimeout(poll, 1500); });
+    });
+    <% if (lastRun && lastRun.status === 'running') { %>setTimeout(poll, 1500);<% } %>
+  })();
+</script>
+<%- include('../partials/admin-end.html') %>

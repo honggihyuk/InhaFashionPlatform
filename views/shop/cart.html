@@ -1,0 +1,63 @@
+<%- include('../partials/head.html') %>
+<body>
+<%- include('../partials/nav.html') %>
+<main class="container">
+  <div class="page-head">
+    <div class="eyebrow">Cart</div>
+    <h1 class="h1" style="margin-top:12px">장바구니</h1>
+  </div>
+
+  <% if (!cart.items.length) { %>
+    <div class="empty" style="margin-top:32px">
+      <h2 class="h3">장바구니가 비어 있습니다</h2>
+      <p class="muted" style="margin:10px 0 20px">마음에 드는 상품을 담아 보세요.</p>
+      <a class="btn btn-primary" href="/products">쇼핑 계속하기</a>
+    </div>
+  <% } else { %>
+  <div class="cart-layout">
+    <section aria-label="담은 상품">
+      <% cart.items.forEach(function (it) { %>
+        <div class="cart-item">
+          <a class="thumb" href="/products/<%= it.article_id %>"><img src="<%= it.image %>" alt="<%= it.prod_name %>" width="96" height="120"></a>
+          <div>
+            <a href="/products/<%= it.article_id %>" style="font-weight:500"><%= it.prod_name %></a>
+            <div class="muted" style="font-size:13px;margin-top:4px"><%= it.colour_group_name %> · 사이즈 <%= it.size %> · <% if (it.discount_pct) { %><span class="sale-pct"><%= it.discount_pct %>%</span> <%= won(it.price_krw) %> <s class="list-price"><%= won(it.list_price_krw) %></s><% } else { %><%= won(it.price_krw) %><% } %></div>
+            <% if (!it.is_active) { %><div class="status status-bad" style="margin-top:6px">판매 중지</div>
+            <% } else if (it.stock < it.qty) { %><div class="status status-bad" style="margin-top:6px">재고 부족 (남은 수량 <%= it.stock %>개)</div><% } %>
+            <div class="controls">
+              <form method="post" action="/cart/update" class="inline-form">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="article_id" value="<%= it.article_id %>">
+                <input type="hidden" name="size" value="<%= it.size %>">
+                <label class="sr-only" for="q-<%= it.article_id %>-<%= it.size %>">수량</label>
+                <select class="select" id="q-<%= it.article_id %>-<%= it.size %>" name="qty" style="width:auto;padding:7px 34px 7px 14px;border-radius:999px;font-size:13px" onchange="this.form.submit()">
+                  <% for (var n = 1; n <= 10; n++) { %><option value="<%= n %>" <%= n === it.qty ? 'selected' : '' %>><%= n %>개</option><% } %>
+                </select>
+              </form>
+              <form method="post" action="/cart/remove">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="article_id" value="<%= it.article_id %>">
+                <input type="hidden" name="size" value="<%= it.size %>">
+                <button class="linklike" type="submit" style="font-size:13px">삭제</button>
+              </form>
+            </div>
+          </div>
+          <div class="num" style="font-weight:600"><%= won(it.line_total) %></div>
+        </div>
+      <% }) %>
+    </section>
+    <aside class="card summary" aria-label="결제 금액">
+      <div class="eyebrow">Order summary</div>
+      <div class="row"><span>상품 금액</span><span class="num"><%= won(cart.subtotal) %></span></div>
+      <div class="row"><span>배송비</span><span class="num"><%= cart.shipping ? won(cart.shipping) : '무료' %></span></div>
+      <% if (cart.shipping) { %><div class="muted" style="font-size:13px"><%= won(50000 - cart.subtotal) %> 더 담으면 무료 배송</div><% } %>
+      <div class="row total"><span>결제 예정 금액</span><span class="num"><%= won(cart.total) %></span></div>
+      <a class="btn btn-primary btn-block" href="/checkout">주문하기</a>
+      <a class="btn btn-secondary btn-block" href="/products">쇼핑 계속하기</a>
+    </aside>
+  </div>
+  <% } %>
+</main>
+<%- include('../partials/footer.html') %>
+</body>
+</html>

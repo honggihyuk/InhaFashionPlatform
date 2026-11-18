@@ -1,0 +1,28 @@
+{
+  "name": "inha-fashion-platform",
+  "version": "1.0.0",
+  "description": "H&M 데이터 기반 의류 관리·판매 웹 서비스 (Node.js + PyTorch 분석)",
+  "main": "app.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning app.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch app.js",
+    "data:sample": "python3 analysis/generate_sample_data.py && python3 analysis/load_hm_data.py",
+    "data:load": "python3 analysis/load_hm_data.py",
+    "seed": "node --disable-warning=ExperimentalWarning db/seed.js --orders",
+    "analyze": "python3 analysis/sales_trend.py",
+    "setup": "npm run data:sample && npm run seed && npm run analyze",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\"",
+    "test:py": "python3 -m unittest discover -s analysis/tests -t .",
+    "test:all": "npm test && npm run test:py"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "ejs": "^7.0.2",
+    "express": "^5.3.0",
+    "express-session": "^1.19.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  }
+}

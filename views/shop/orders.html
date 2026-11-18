@@ -1,0 +1,33 @@
+<%- include('../partials/head.html') %>
+<body>
+<%- include('../partials/nav.html') %>
+<main class="container">
+  <div class="page-head">
+    <div class="eyebrow">My orders</div>
+    <h1 class="h1" style="margin-top:12px">주문 내역</h1>
+  </div>
+  <% if (!orders.length) { %>
+    <div class="empty" style="margin-top:32px">
+      <h2 class="h3">아직 주문한 상품이 없습니다</h2>
+      <p class="muted" style="margin:10px 0 20px">첫 주문을 시작해 보세요.</p>
+      <a class="btn btn-primary" href="/products">상품 보러가기</a>
+    </div>
+  <% } else { %>
+    <div style="margin-top:24px">
+      <% var cls = { PAID: 'status-pending', SHIPPING: 'status-pending', DELIVERED: 'status-ok', CANCELLED: 'status-muted' }; %>
+      <% orders.forEach(function (o) { %>
+        <a class="order-row" href="/orders/<%= o.order_no %>">
+          <div class="receipt">
+            <span class="mono" style="font-size:13px"><%= o.order_no %></span>
+            <span class="muted" style="font-size:13px"><%= o.created_at %> · 상품 <%= o.item_count %>종</span>
+          </div>
+          <span class="status <%= cls[o.status] %>"><%= o.status_label %></span>
+          <span class="num" style="font-weight:600"><%= won(o.total_krw) %></span>
+        </a>
+      <% }) %>
+    </div>
+  <% } %>
+</main>
+<%- include('../partials/footer.html') %>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<%- include('head.html', { styles: ['admin'] }) %>
+<body>
+<div class="admin-shell">
+  <aside class="admin-side">
+    <a class="wordmark" href="/admin">InhaFashion <span class="mono">ADMIN</span></a>
+    <nav aria-label="관리자 메뉴">
+      <a href="/admin" class="<%= adminNav === 'dashboard' ? 'is-active' : '' %>">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 13l4-5 3 3 5-7"/></svg>판매 추이
+      </a>
+      <a href="/admin/products" class="<%= adminNav === 'products' ? 'is-active' : '' %>">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5 2l3 1.5L11 2l3 3-2 2-1-.5V14H5V6.5L4 7 2 5z"/></svg>상품·재고 관리
+      </a>
+      <a href="/admin/promotions" class="<%= adminNav === 'promotions' ? 'is-active' : '' %>">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 8.5V2.5h6l6 6-6 6z"/><circle cx="5.5" cy="5.5" r="1"/></svg>행사 상품
+      </a>
+      <a href="/admin/orders" class="<%= adminNav === 'orders' ? 'is-active' : '' %>">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 6h4M6 9h4"/></svg>주문 관리
+      </a>
+      <a href="/admin/audit" class="<%= adminNav === 'audit' ? 'is-active' : '' %>">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>작업 기록
+      </a>
+    </nav>
+    <div class="who">
+      <span class="eyebrow" style="font-size:11px"><%= auth.adminRole === 'super' ? 'Super admin' : 'Manager' %></span>
+      <b style="font-weight:500"><%= auth.name %></b>
+      <span class="soft"><%= auth.email %></span>
+      <form action="/logout" method="post">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="linklike" type="submit" style="font-size:13px">로그아웃</button>
+      </form>
+    </div>
+  </aside>
+  <main class="admin-main">
+    <% if (flash) { %><div class="flash flash-<%= flash.type %>" role="status" style="margin-top:0"><%= flash.text %></div><% } %>

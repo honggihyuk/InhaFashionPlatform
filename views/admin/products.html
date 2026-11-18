@@ -1,0 +1,71 @@
+<%- include('../partials/admin-start.html') %>
+<div class="admin-head">
+  <div>
+    <div class="eyebrow">Catalog · inventory</div>
+    <h1 class="h1">상품·재고 관리</h1>
+    <p class="muted" style="margin-top:8px;font-size:14px">전체 <%= inventory.total %>개 · 판매 중 <%= inventory.active %>개 ·
+      <span class="status status-bad" style="font-size:14px">품절 <%= inventory.sold_out %></span> ·
+      <span class="status status-pending" style="font-size:14px">재고 10개 미만 <%= inventory.low_stock %></span></p>
+  </div>
+</div>
+
+<form class="filter-row" method="get" action="/admin/products">
+  <label class="sr-only" for="q">검색</label>
+  <input class="input" id="q" name="q" placeholder="상품명 또는 상품번호" value="<%= filters.q %>" style="min-width:240px">
+  <label class="sr-only" for="index">부서</label>
+  <select class="select" id="index" name="index">
+    <option value="">전체 부서</option>
+    <% facets.indexes.forEach(function (f) { %><option value="<%= f.name %>" <%= filters.index === f.name ? 'selected' : '' %>><%= ko(f.name) %></option><% }) %>
+  </select>
+  <label class="sr-only" for="group">품목</label>
+  <select class="select" id="group" name="group">
+    <option value="">전체 품목</option>
+    <% facets.groups.forEach(function (f) { %><option value="<%= f.name %>" <%= filters.group === f.name ? 'selected' : '' %>><%= ko(f.name) %></option><% }) %>
+  </select>
+  <label class="sr-only" for="sort">정렬</label>
+  <select class="select" id="sort" name="sort">
+    <option value="popular" <%= filters.sort === 'popular' ? 'selected' : '' %>>최근 판매량순</option>
+    <option value="new" <%= filters.sort === 'new' ? 'selected' : '' %>>신상품순</option>
+    <option value="price_desc" <%= filters.sort === 'price_desc' ? 'selected' : '' %>>가격 높은순</option>
+    <option value="price_asc" <%= filters.sort === 'price_asc' ? 'selected' : '' %>>가격 낮은순</option>
+  </select>
+  <button class="btn btn-primary btn-sm" type="submit">조회</button>
+</form>
+
+<div class="chart-card" style="padding:8px 8px 0">
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>상품</th><th>분류</th><th class="right">최근 8주 판매</th><th class="right">판매가 (원)</th><th class="right">재고</th><th>노출</th><th></th></tr></thead>
+      <tbody>
+        <% result.items.forEach(function (p) { %>
+          <tr>
+            <td><div class="cell-product"><span class="thumb-sm"><img src="<%= p.image %>" alt=""></span><span><a href="/products/<%= p.article_id %>" target="_blank" rel="noopener" style="font-weight:500"><%= p.prod_name %></a><br><span class="soft mono" style="font-size:11px"><%= p.article_id %> · <%= p.colour_group_name %></span><% if (p.discount_pct) { %> <a class="sale-pct" style="font-size:12px" href="/admin/promotions">행사 <%= p.discount_pct %>% · <%= won(p.final_price_krw) %></a><% } %></span></div></td>
+            <td style="font-size:13px"><%= ko(p.index_group_name) %><br><span class="soft"><%= p.product_type_name %></span></td>
+            <td class="right num"><%= p.popularity.toLocaleString('ko-KR') %></td>
+            <td colspan="4">
+              <form method="post" action="/admin/products/<%= p.article_id %>" class="inline-form" style="justify-content:flex-end">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <label class="sr-only" for="pr-<%= p.article_id %>">판매가</label>
+                <input class="input-sm num" id="pr-<%= p.article_id %>" name="price_krw" type="number" min="0" step="100" value="<%= p.price_krw %>">
+                <label class="sr-only" for="st-<%= p.article_id %>">재고</label>
+                <input class="input-sm num" id="st-<%= p.article_id %>" name="stock" type="number" min="0" value="<%= p.stock %>" style="width:76px">
+                <span class="status <%= p.stock === 0 ? 'status-bad' : p.stock < 10 ? 'status-pending' : 'status-ok' %>" style="min-width:44px" aria-hidden="true"></span>
+                <label class="toggle"><input type="checkbox" name="is_active" value="1" <%= p.is_active ? 'checked' : '' %>> 판매</label>
+                <button class="btn btn-secondary btn-sm" type="submit">저장</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<% if (result.pages > 1) { var base = '/admin/products?' + new URLSearchParams({ q: filters.q, index: filters.index, group: filters.group, sort: filters.sort }).toString(); %>
+  <nav style="display:flex;gap:6px;justify-content:center;margin-top:24px" aria-label="페이지">
+    <% if (result.page > 1) { %><a class="pill" href="<%= base %>&page=<%= result.page - 1 %>">← 이전</a><% } %>
+    <span class="pill is-active num"><%= result.page %> / <%= result.pages %></span>
+    <% if (result.page < result.pages) { %><a class="pill" href="<%= base %>&page=<%= result.page + 1 %>">다음 →</a><% } %>
+  </nav>
+<% } %>
+<%- include('../partials/admin-end.html') %>

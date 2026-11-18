@@ -1,0 +1,30 @@
+<%- include('../partials/admin-start.html') %>
+<div class="admin-head">
+  <div>
+    <div class="eyebrow">Audit log · admin schema</div>
+    <h1 class="h1">작업 기록</h1>
+    <p class="muted" style="margin-top:8px;font-size:14px">관리자가 수행한 가격·재고 변경, 주문 상태 변경, 분석 실행 기록입니다.</p>
+  </div>
+</div>
+<div class="chart-card" style="padding:8px 8px 0">
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>시각 (UTC)</th><th>관리자</th><th>작업</th><th>대상</th><th>내용</th></tr></thead>
+      <tbody>
+        <% var names = { 'analysis.run': '분석 실행', 'product.update': '상품 수정', 'order.status': '주문 상태 변경',
+          'promotion.approve': '행사 승인', 'promotion.update': '행사 할인율 변경', 'promotion.end': '행사 종료' }; %>
+        <% logs.forEach(function (l) { %>
+          <tr>
+            <td class="num" style="font-size:13px"><%= l.created_at %></td>
+            <td style="font-size:13px"><%= l.admin_name %></td>
+            <td><%= names[l.action] || l.action %></td>
+            <td class="mono" style="font-size:12px"><%= l.target %></td>
+            <td class="mono soft" style="font-size:11px;max-width:380px;word-break:break-all"><%= l.detail %></td>
+          </tr>
+        <% }) %>
+        <% if (!logs.length) { %><tr><td colspan="5" class="muted" style="text-align:center;padding:40px">기록이 없습니다.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<%- include('../partials/admin-end.html') %>

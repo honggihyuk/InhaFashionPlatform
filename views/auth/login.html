@@ -1,0 +1,56 @@
+<%- include('../partials/head.html', { styles: ['shop', 'auth'] }) %>
+<body>
+<main class="auth">
+  <section class="auth-visual <%= as === 'admin' ? 'is-admin' : '' %>">
+    <a class="wordmark" href="/">InhaFashion <span class="mono">H&amp;M EDITION</span></a>
+    <div>
+      <div class="media-label" style="opacity:.7;margin-bottom:16px"><%= as === 'admin' ? 'Admin console' : 'Member sign in' %></div>
+      <h1 class="h1"><%= as === 'admin' ? '판매 흐름을 시간 단위로 읽습니다.' : '오늘 입을 옷을 H&M 컬렉션에서.' %></h1>
+      <p style="margin-top:16px;opacity:.72;max-width:420px">
+        <%= as === 'admin'
+          ? 'PyTorch로 분석한 H&M 거래 데이터의 일·주·월·요일·시간대별 판매 추이와 4주 수요 예측을 확인하세요.'
+          : '상품을 둘러보고 장바구니에 담아 바로 주문할 수 있습니다.' %>
+      </p>
+    </div>
+    <div class="auth-toast">
+      <span class="dot">✓</span>
+      <span><%= as === 'admin' ? '관리자 계정은 별도 admin 스키마에서 인증됩니다' : '이용자 계정은 member 스키마에서 인증됩니다' %></span>
+    </div>
+  </section>
+  <section class="auth-form">
+    <div class="auth-box">
+      <div class="seg-tabs" role="tablist">
+        <a role="tab" aria-selected="<%= as === 'user' %>" class="<%= as === 'user' ? 'is-active' : '' %>" href="/login">이용자</a>
+        <a role="tab" aria-selected="<%= as === 'admin' %>" class="<%= as === 'admin' ? 'is-active' : '' %>" href="/login?as=admin">관리자</a>
+      </div>
+      <h2 class="h2"><%= as === 'admin' ? '관리자 로그인' : '로그인' %></h2>
+      <% if (error) { %><div class="flash flash-error" role="alert"><%= error %></div><% } %>
+      <form method="post" action="/login" class="form-grid">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="as" value="<%= as %>">
+        <div class="field">
+          <label for="email">이메일</label>
+          <input class="input" id="email" name="email" type="email" autocomplete="username" required value="<%= email %>">
+        </div>
+        <div class="field">
+          <label for="password">비밀번호</label>
+          <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">로그인</button>
+      </form>
+      <% if (as === 'user') { %>
+        <p class="muted" style="font-size:14px">아직 회원이 아니신가요? <a class="link" href="/signup">회원가입</a></p>
+      <% } %>
+      <div class="demo-accounts">
+        <div class="eyebrow soft" style="font-size:11px">개발용 계정</div>
+        <% if (as === 'admin') { %>
+          <span class="mono">admin@inha.fashion / admin1234</span>
+        <% } else { %>
+          <span class="mono">user@inha.fashion / user1234</span>
+        <% } %>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

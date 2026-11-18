@@ -1,0 +1,110 @@
+<%- include('../partials/head.html') %>
+<body>
+<%- include('../partials/nav.html') %>
+<main class="container">
+  <nav class="muted" style="font-size:13px;margin-top:24px" aria-label="경로">
+    <a href="/products">상품</a> / <a href="/products?index=<%= encodeURIComponent(item.index_group_name) %>"><%= ko(item.index_group_name) %></a> /
+    <a href="/products?group=<%= encodeURIComponent(item.product_group_name) %>"><%= ko(item.product_group_name) %></a>
+  </nav>
+
+  <div class="detail">
+    <div class="detail-media"><img src="<%= item.image %>" alt="<%= item.prod_name %>" width="480" height="600"></div>
+
+    <div class="detail-info">
+      <div>
+        <div class="eyebrow" style="margin-bottom:12px"><%= item.index_name %> · <%= item.product_type_name %></div>
+        <h1 class="h1"><%= item.prod_name %></h1>
+        <% if (item.discount_pct) { %>
+          <div style="margin-top:14px">
+            <span class="badge sale-badge media-label">행사 상품 · SALE</span>
+            <div class="price-lg num" style="margin-top:10px"><span class="sale-pct"><%= item.discount_pct %>%</span> <%= won(item.final_price_krw) %> <s class="list-price"><%= won(item.price_krw) %></s></div>
+          </div>
+        <% } else { %>
+          <div class="price-lg num" style="margin-top:14px"><%= won(item.price_krw) %></div>
+        <% } %>
+      </div>
+
+      <% if (variants.length > 1) { %>
+      <div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:8px">색상 · <%= item.colour_group_name %></div>
+        <div class="swatches">
+          <% variants.forEach(function (v) { %>
+            <a class="swatch <%= v.article_id === item.article_id ? 'is-active' : '' %>" href="/products/<%= v.article_id %>" title="<%= v.colour_group_name %>"><img src="<%= v.image %>" alt="<%= v.colour_group_name %>" width="56" height="70"></a>
+          <% }) %>
+        </div>
+      </div>
+      <% } %>
+
+      <form method="post" action="/cart/add" class="form-grid" style="gap:20px">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="article_id" value="<%= item.article_id %>">
+        <fieldset style="border:0;padding:0;margin:0">
+          <legend style="font-size:13px;font-weight:500;margin-bottom:8px">사이즈</legend>
+          <div class="size-grid">
+            <% item.sizes.forEach(function (s, i) { %>
+              <input type="radio" name="size" id="size-<%= i %>" value="<%= s %>" <%= item.sizes.length === 1 ? 'checked' : '' %> required>
+              <label for="size-<%= i %>"><%= s %></label>
+            <% }) %>
+          </div>
+        </fieldset>
+        <div style="display:flex;gap:16px;align-items:center">
+          <div class="qty">
+            <button type="button" aria-label="수량 줄이기" onclick="var q=this.nextElementSibling;q.value=Math.max(1,+q.value-1)">−</button>
+            <input name="qty" value="1" inputmode="numeric" aria-label="수량">
+            <button type="button" aria-label="수량 늘리기" onclick="var q=this.previousElementSibling;q.value=Math.min(10,+q.value+1)">+</button>
+          </div>
+          <% if (item.stock === 0) { %>
+            <span class="status status-bad">품절</span>
+          <% } else if (item.stock < 10) { %>
+            <span class="status status-pending">재고 <%= item.stock %>개 남음</span>
+          <% } else { %>
+            <span class="status status-ok">구매 가능</span>
+          <% } %>
+        </div>
+        <div class="buy-row">
+          <% if (auth && auth.role === 'user') { %>
+            <button class="btn btn-secondary" type="submit" <%= item.stock === 0 ? 'disabled' : '' %>>장바구니 담기</button>
+            <button class="btn btn-primary" type="submit" name="buy_now" value="1" <%= item.stock === 0 ? 'disabled' : '' %>>바로 구매</button>
+          <% } else { %>
+            <a class="btn btn-primary" href="/login">로그인하고 구매하기</a>
+          <% } %>
+        </div>
+      </form>
+
+      <p class="muted"><%= item.detail_desc %></p>
+
+      <dl class="spec">
+        <dt>상품번호</dt><dd class="mono"><%= item.article_id %></dd>
+        <dt>품목</dt><dd><%= item.product_type_name %> (<%= ko(item.product_group_name) %>)</dd>
+        <dt>패턴</dt><dd><%= item.graphical_appearance_name %></dd>
+        <dt>라인</dt><dd><%= item.garment_group_name %></dd>
+        <dt>섹션</dt><dd><%= item.section_name %></dd>
+      </dl>
+
+      <% if (sales.length) { var max = Math.max.apply(null, sales.map(function (s) { return s.units; })); %>
+      <div class="panel-dark mini-demo">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span class="media-label" style="opacity:.7">H&amp;M sales · last 12 months</span>
+          <span class="num" style="font-size:13px"><%= sales.reduce(function (a, s) { return a + s.units; }, 0).toLocaleString('ko-KR') %>개 판매</span>
+        </div>
+        <div class="mini-bars" role="img" aria-label="최근 12개월 월별 판매량">
+          <% sales.forEach(function (s) { %><span style="height:<%= Math.max(3, s.units / max * 100) %>%" title="<%= s.month %> · <%= s.units %>개"></span><% }) %>
+        </div>
+        <div class="mini-axis media-label" style="opacity:.6"><span><%= sales[0].month %></span><span><%= sales[sales.length - 1].month %></span></div>
+      </div>
+      <% } %>
+    </div>
+  </div>
+
+  <% if (alsoBought.length) { %>
+  <section class="section">
+    <div class="section-head"><div><div class="eyebrow">Customers also bought</div><h2 class="h2">함께 구매한 상품</h2></div></div>
+    <div class="product-grid">
+      <% alsoBought.forEach(function (p) { %><%- include('../partials/product-card.html', { p: p }) %><% }) %>
+    </div>
+  </section>
+  <% } %>
+</main>
+<%- include('../partials/footer.html') %>
+</body>
+</html>

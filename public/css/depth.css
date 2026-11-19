@@ -1,0 +1,141 @@
+/* =====================================================================
+   얇은 명암 (Subtle depth)
+   DESIGN.md 의 원칙을 지킵니다: 떠 있는 카드용 그림자나 무거운 바깥 그림자는 쓰지 않습니다.
+   - 밝은 면: 위쪽은 아주 조금 밝고 아래쪽은 아주 조금 어두운 톤 그라데이션 + 1px 하이라이트·헤어라인
+   - 어두운 버튼·패널: 안쪽 흰 하이라이트(inset)로 빛을 받은 느낌
+   - 입력칸: 안쪽 위쪽에 얇은 그늘을 넣어 살짝 들어간 느낌
+   - 상호작용: hover 때 한 톤 밝아지고, 누르면 하이라이트가 사라지며 1px 내려감
+   모든 페이지에서 마지막에 불러오므로 기존 스타일 위에 얹히기만 하고 레이아웃은 바꾸지 않습니다.
+   ===================================================================== */
+:root {
+  /* 톤 */
+  --depth-oat-top: #fbf9f7;            /* Oat Surface 보다 한 톤 밝게 */
+  --depth-oat-bottom: #f0ebe6;         /* Oat Surface 보다 한 톤 어둡게 */
+  --depth-brown-top: #4a3527;          /* Ledger Brown 보다 한 톤 밝게 */
+  --depth-espresso-glow: rgba(255, 255, 255, .08);
+
+  /* 선과 그늘 (모두 1px 안팎, 투명도 3~8%) */
+  --depth-hairline: rgba(33, 16, 6, .08);
+  --depth-highlight: inset 0 1px 0 rgba(255, 255, 255, .9);
+  --depth-under: inset 0 -1px 0 rgba(33, 16, 6, .06);
+  --depth-ambient: 0 1px 2px rgba(33, 16, 6, .05);   /* 거의 보이지 않는 바닥 그늘 */
+  --depth-recess: inset 0 1px 2px rgba(33, 16, 6, .08);
+  --depth-dark-highlight: inset 0 1px 0 rgba(255, 255, 255, .14), inset 0 -1px 0 rgba(0, 0, 0, .18);
+  --depth-ease: 160ms cubic-bezier(.2, .7, .3, 1);
+}
+
+/* ---- 밝은 면: Oat 카드·패널 ---- */
+.card, .search-panel, .empty, .admin-side .who, .flash, .notice-list.card {
+  background-image: linear-gradient(180deg, var(--depth-oat-top) 0%, var(--color-oat-surface) 55%, var(--depth-oat-bottom) 100%);
+  box-shadow: var(--depth-highlight), var(--depth-under), inset 0 0 0 1px var(--depth-hairline);
+}
+.feature-card { isolation: isolate; }
+.feature-card .disc {
+  background-image: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, 0) 55%),
+    radial-gradient(circle at 70% 80%, rgba(33, 16, 6, .12) 0%, rgba(33, 16, 6, 0) 60%);
+  z-index: -1;
+}
+
+/* ---- 흰 면: 차트 카드·흰 카드 ---- */
+.chart-card, .card-plain {
+  background-image: linear-gradient(180deg, #fff 0%, #fff 70%, #fcfbfa 100%);
+  box-shadow: inset 0 0 0 1px var(--depth-hairline), var(--depth-ambient);
+}
+.chart-card.oat {
+  background-image: linear-gradient(180deg, var(--depth-oat-top) 0%, var(--color-oat-surface) 55%, var(--depth-oat-bottom) 100%);
+  box-shadow: var(--depth-highlight), var(--depth-under);
+}
+
+/* ---- 어두운 면: Espresso 패널·KPI·토스트 ---- */
+.panel-dark, .kpi {
+  background-image: radial-gradient(120% 90% at 0% 0%, var(--depth-espresso-glow) 0%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, .02) 0%, rgba(0, 0, 0, .08) 100%);
+  box-shadow: var(--depth-dark-highlight);
+}
+.hero-toast, .product-card .badge {
+  box-shadow: var(--depth-dark-highlight);
+  backdrop-filter: blur(6px);
+}
+
+/* ---- 버튼 ---- */
+.btn { transition: background-color var(--depth-ease), box-shadow var(--depth-ease), transform var(--depth-ease), filter var(--depth-ease); }
+.btn-primary {
+  background-image: linear-gradient(180deg, var(--depth-brown-top) 0%, var(--color-ledger-brown) 100%);
+  box-shadow: var(--depth-dark-highlight), 0 1px 2px rgba(33, 16, 6, .14);
+}
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-secondary {
+  background-image: linear-gradient(180deg, var(--depth-oat-top) 0%, var(--color-oat-surface) 100%);
+  box-shadow: var(--depth-highlight), inset 0 0 0 1px var(--depth-hairline), var(--depth-ambient);
+}
+.btn-secondary:hover { background-image: linear-gradient(180deg, #fff 0%, var(--depth-oat-top) 100%); }
+.btn-ghost:hover { background-color: var(--color-oat-surface); }
+.btn:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--depth-recess), inset 0 0 0 1px var(--depth-hairline); filter: none; }
+
+/* ---- 알약(필터·페이지)·사이즈·수량·결제수단 ---- */
+.pill, .size-grid label, .qty, .pay-options label {
+  background-image: linear-gradient(180deg, #fff 0%, #fdfcfb 100%);
+  box-shadow: inset 0 0 0 1px var(--line), var(--depth-under), var(--depth-ambient);
+  transition: background-color var(--depth-ease), box-shadow var(--depth-ease);
+}
+.pill:hover, .size-grid label:hover, .pay-options label:hover { background-image: linear-gradient(180deg, #fff 0%, var(--depth-oat-top) 100%); }
+.pill.is-active, .size-grid input:checked + label, .admin-side nav a.is-active {
+  background-image: linear-gradient(180deg, var(--depth-brown-top) 0%, var(--color-ledger-brown) 100%);
+  box-shadow: var(--depth-dark-highlight);
+}
+.pay-options input:checked + label {
+  background-image: linear-gradient(180deg, var(--depth-oat-top) 0%, var(--color-oat-surface) 100%);
+  box-shadow: inset 0 0 0 2px var(--color-ledger-brown), var(--depth-highlight);
+}
+.seg button.is-active { box-shadow: 0 0 0 1px var(--line), var(--depth-ambient), var(--depth-highlight); }
+
+/* ---- 입력칸: 살짝 들어간 면 ---- */
+.input, .select, .textarea, .input-sm, .nav-search input {
+  box-shadow: var(--depth-recess);
+  transition: box-shadow var(--depth-ease), border-color var(--depth-ease), background-color var(--depth-ease);
+}
+.input:focus, .select:focus, .textarea:focus, .input-sm:focus { box-shadow: var(--depth-recess), 0 0 0 3px rgba(59, 40, 29, .08); }
+.nav-search input:focus { outline: none; background-color: #fff; box-shadow: var(--depth-recess), 0 0 0 1px var(--line); }
+.select { background-color: #fff; }
+
+/* ---- 상품 이미지: 가장자리 헤어라인 + 아래쪽 옅은 그늘 ---- */
+.product-card .media::after, .detail-media, .thumb-sm, .swatch, .hero-media a {
+  --media-edge: inset 0 0 0 1px var(--depth-hairline);
+}
+.product-card .media::after, .hero-media a::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .05) 0%, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0) 60%, rgba(33, 16, 6, .08) 100%);
+  box-shadow: var(--media-edge);
+  transition: background var(--depth-ease);
+}
+.product-card:hover .media::after { background: linear-gradient(180deg, rgba(255, 255, 255, .1) 0%, rgba(255, 255, 255, 0) 45%, rgba(33, 16, 6, .11) 100%); }
+.product-card .media, .detail-media { box-shadow: var(--depth-ambient); }
+.product-card .badge { z-index: 1; }
+.detail-media { position: relative; }
+.detail-media::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--depth-hairline); }
+.thumb-sm, .swatch:not(.is-active) { box-shadow: inset 0 0 0 1px var(--depth-hairline); }
+.thumb-sm { position: relative; }
+
+/* ---- 카테고리 타일·표 행: hover 때 한 톤 ---- */
+.cat-cell { transition: background-color var(--depth-ease), box-shadow var(--depth-ease); }
+.cat-cell:hover {
+  background-image: linear-gradient(180deg, var(--depth-oat-top) 0%, var(--color-oat-surface) 100%);
+  box-shadow: var(--depth-highlight);
+}
+.table tbody tr { transition: background-color var(--depth-ease); }
+.table tbody tr:hover { background-color: rgba(247, 244, 241, .55); }
+
+/* ---- 상단 내비게이션·관리자 사이드바 ---- */
+.nav { box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset, 0 1px 3px rgba(33, 16, 6, .03); }
+.admin-side { background-image: linear-gradient(180deg, #fff 0%, #fdfcfb 100%); }
+.admin-side nav a { transition: background-color var(--depth-ease), box-shadow var(--depth-ease); }
+.admin-side nav a:hover:not(.is-active) { box-shadow: var(--depth-highlight), inset 0 0 0 1px var(--depth-hairline); }
+.cart-badge { box-shadow: var(--depth-dark-highlight); }
+
+/* ---- 로그인 화면 비주얼 ---- */
+.auth-visual { box-shadow: var(--depth-dark-highlight); }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, .pill, .cat-cell, .table tbody tr, .admin-side nav a, .input, .select { transition: none; }
+  .btn:active:not(:disabled) { transform: none; }
+}
